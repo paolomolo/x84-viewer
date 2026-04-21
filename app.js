@@ -189,8 +189,8 @@ function extractProjectInfo(xmlDoc) {
   const tender = firstByLocalName(xmlDoc, "Tender");
   return {
     Projektname: deepText(project, ["Name", "Description", "Title"]) || "-",
-    Projekt-ID: deepText(project, ["ID", "ProjectNo", "Number"]) || "-",
-    LV-Bezeichnung: deepText(tender, ["Name", "Description", "Title"]) || "-",
+    "Projekt-ID": deepText(project, ["ID", "ProjectNo", "Number"]) || "-",
+    "LV-Bezeichnung": deepText(tender, ["Name", "Description", "Title"]) || "-",
     Vergabeart: deepText(tender, ["Award", "Type", "Procedure"]) || "-",
     Quelle: xmlDoc.documentElement.getAttribute("xmlns") || "GAEB",
   };
