@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GAEB .x84 Web-Viewer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>GAEB DA XML Viewer</h1>
+        <p class="subtitle">
+          Lokale Analyse und Export von .x84-Dateien (kein Upload, keine Speicherung)
+        </p>
+      </div>
+      <button id="themeToggle" class="secondary-btn" type="button">Dark Mode</button>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Datei laden</h2>
+        <div id="dropZone" class="drop-zone" role="button" tabindex="0" aria-label="Datei hier ablegen">
+          <p><strong>.x84 Datei hierher ziehen</strong> oder per Button auswählen</p>
+          <p class="muted">Unterstützt: .x84 / XML (GAEB DA XML)</p>
+          <button id="selectFileBtn" type="button">Datei auswählen</button>
+          <input id="fileInput" type="file" accept=".x84,.xml,text/xml,application/xml" hidden />
+        </div>
+        <div id="fileMeta" class="file-meta">Noch keine Datei geladen.</div>
+        <div id="errorBox" class="error-box hidden" role="alert"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Projektinformationen</h2>
+          <button id="exportBtn" class="primary-btn" type="button" disabled>Als Excel exportieren</button>
+        </div>
+        <div id="projectInfo" class="kv-grid empty-state">Bitte zuerst eine GAEB-Datei laden.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Angebotsdaten</h2>
+        <div id="bidInfo" class="kv-grid empty-state">Keine Angebotsdaten geladen.</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header wrap">
+          <h2>Positionen und Preise</h2>
+          <div class="filters">
+            <input id="searchInput" type="search" placeholder="Suche (OZ / Beschreibung)" />
+            <input id="ozMinInput" type="text" placeholder="OZ von (z. B. 01.002)" />
+            <input id="ozMaxInput" type="text" placeholder="OZ bis" />
+            <button id="resetFiltersBtn" class="secondary-btn" type="button">Filter zurücksetzen</button>
+          </div>
+        </div>
+        <div id="tableMeta" class="table-meta">0 Positionen</div>
+        <div class="table-wrap">
+          <table id="positionsTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>OZ</th>
+                <th>Beschreibung</th>
+                <th>Menge</th>
+                <th>Einheit</th>
+                <th>EP</th>
+                <th>GP</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>XML-Baumansicht</h2>
+        <div id="xmlTree" class="tree-view empty-state">Baumansicht erscheint nach dem Laden.</div>
+      </section>
+
+      <section class="panel">
+        <h2>XML-Rohdaten</h2>
+        <pre id="rawXml" class="raw-xml empty-state">Rohdatenvorschau erscheint nach dem Laden.</pre>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>
+        Datenschutz: Alle Verarbeitungen erfolgen ausschließlich lokal in Ihrem Browser. Es werden keine Daten übertragen.
+      </p>
+    </footer>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
