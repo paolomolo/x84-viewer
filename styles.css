@@ -426,8 +426,41 @@ tbody tr.group-row:hover {
 
 .app-footer {
   margin-bottom: 1.5rem;
+  padding-bottom: 1.2rem;
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.repo-link-row {
+  margin-top: 1rem;
+  margin-bottom: 1.2rem;
+  text-align: center;
+}
+
+.repo-link {
+  color: color-mix(in srgb, var(--muted) 72%, var(--bg) 28%);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--border) 75%, var(--bg) 25%);
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.repo-link:hover {
+  color: var(--text);
+  background: var(--panel-alt);
+  border-color: color-mix(in srgb, var(--border) 55%, var(--text) 45%);
+}
+
+.repo-link svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: currentColor;
+  transform: translateY(-1px);
 }
 
 @media (max-width: 900px) {
