@@ -1,22 +1,21 @@
 # x84-viewer
 
-Lokaler Web-Viewer fuer GAEB DA XML (`.x84`) Dateien mit Tabellenansicht, XML-Baum und Excel-Export.
+Lokaler Web-Viewer für GAEB DA XML (`.x84`) Dateien mit Tabellenansicht, XML-Baum und Excel-Export.
+
+Zur Anwendung: [paolomolo.github.io/x84-viewer/](https://paolomolo.github.io/x84-viewer/)
+
+## Funktionen
+
+- Lokales Einlesen von `.x84`/XML-Dateien per Auswahl oder Drag-and-drop
+- Positionsansicht als Liste oder gruppierte Hierarchie
+- Filter nach Suchtext und Ordnungszahl-Bereich
+- Optionaler Expertenmodus mit XML-Baum, Rohdaten und zusätzlichen Feldern
+- Excel-Export mit separaten Blättern für Angebotsinfo und Positionen
 
 ## Lokal starten
 
 - Repository klonen
-- `index.html` im Browser oeffnen
+- `index.html` im Browser öffnen
 
-Die App ist komplett clientseitig und benoetigt keinen Server.
+Die App ist komplett clientseitig und benötigt keinen Server.
 
-## Deployment im Web (GitHub Pages)
-
-Dieses Repository enthaelt einen Workflow unter `.github/workflows/deploy-pages.yml`, der bei Push auf `main` automatisch auf GitHub Pages deployed.
-
-Einmalig im GitHub-Repository einstellen:
-
-1. **Settings -> Pages** oeffnen
-2. Unter **Build and deployment** die Quelle auf **GitHub Actions** setzen
-3. Aenderung speichern
-
-Danach wird bei jedem Push auf `main` automatisch deployed.

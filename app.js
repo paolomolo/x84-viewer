@@ -804,7 +804,7 @@ function parseAndRender(xmlText, file) {
   state.positions = extractPositions(xmlDoc);
   state.allFields = extractAllFields(xmlDoc);
 
-  el.fileMeta.textContent = `Geladen: ${file.name} (${formatBytes(file.size)})`;
+  el.fileMeta.textContent = `Geladen: ${file.name} (${formatBytes(file.size)}) ✅`;
   el.rawXml.textContent = xmlText.slice(0, 120000);
   if (xmlText.length > 120000) {
     el.rawXml.textContent += "\n\n... Vorschau gekuerzt ...";
