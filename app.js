@@ -401,7 +401,7 @@ function extractPositions(xmlDoc) {
   });
 
   const positions = positionNodes.map((node, idx) => {
-    const oz =
+    const ozRaw =
       deepText(node, ["RNoPart", "OZ", "OutlineText", "ItemNo", "Reference"]) ||
       node.getAttribute("RNoPart") ||
       node.getAttribute("ID") ||
@@ -432,11 +432,13 @@ function extractPositions(xmlDoc) {
     const quantity = toNumber(quantityRaw);
     const unitPrice = toNumber(unitPriceRaw);
     const totalPrice = toNumber(totalPriceRaw) || quantity * unitPrice || 0;
-    const groupChain = extractGroupChain(node, oz);
+    const groupChain = extractGroupChain(node, ozRaw);
+    const oz = buildDisplayOz(groupChain, ozRaw);
 
     return {
       index: idx + 1,
       oz: oz.trim(),
+      ozRaw: String(ozRaw || "").trim(),
       description: description.trim().replace(/\s+/g, " "),
       quantity,
       unit: unit.trim(),
@@ -563,7 +565,7 @@ function renderGroupNode(model, groupKey) {
     const rowTr = document.createElement("tr");
     rowTr.innerHTML = `
       <td>${escapeHtml(String(position.index))}</td>
-      <td style="padding-left:${Math.max(0, group.level) * 14 + 8}px">${escapeHtml(position.groupDisplay || "-")}</td>
+      <td></td>
       <td>${escapeHtml(position.oz)}</td>
       <td>${escapeHtml(position.description)}</td>
       <td>${formatNumber(position.quantity)}</td>
@@ -910,6 +912,26 @@ function normalizeGroupCodeSegment(value) {
     return `0${digits}`;
   }
   return digits;
+}
+
+function buildDisplayOz(groupChain, ozRaw) {
+  const raw = String(ozRaw || "").trim();
+  if (!raw || raw === "-") {
+    return "-";
+  }
+  if (raw.includes(".")) {
+    return raw.endsWith(".") ? raw : `${raw}.`;
+  }
+  if (!groupChain?.length) {
+    return raw;
+  }
+  const leafCode = groupChain[groupChain.length - 1].code || "";
+  const rawDigits = raw.replace(/[^\d]/g, "");
+  if (!rawDigits) {
+    return `${leafCode}${raw}`.trim();
+  }
+  const itemPart = rawDigits.padStart(4, "0");
+  return `${leafCode}${itemPart}.`;
 }
 
 function extractGroupTitle(groupNode) {
