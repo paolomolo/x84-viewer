@@ -734,7 +734,7 @@ function renderBidInfo(data, emptyText) {
   const sideEntries = [
     ["Datum", data.Datum || "-"],
     ["Angebotsnummer", data.Angebotsnummer || "-"],
-    ["Waehrung", data.Waehrung || "-"],
+    ["Währung", data.Waehrung || "-"],
   ];
   for (const [key, value] of sideEntries) {
     const item = document.createElement("article");

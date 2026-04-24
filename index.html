@@ -85,9 +85,9 @@
               </div>
             </div>
             <div class="filters-right">
-              <input id="searchInput" type="search" placeholder="Suche (OZ / Beschreibung)" />
-              <input id="ozMinInput" type="text" placeholder="OZ von (z. B. 01.002)" />
-              <input id="ozMaxInput" type="text" placeholder="OZ bis" />
+              <input id="searchInput" type="search" placeholder="Suche (OZ / Text)" />
+              <input id="ozMinInput" type="text" placeholder="OZ von (z. B. 01.02.0010.)" />
+              <input id="ozMaxInput" type="text" placeholder="OZ bis (z. B. 01.02.0090.)" />
               <button id="resetFiltersBtn" class="secondary-btn" type="button">Filter zurücksetzen</button>
             </div>
           </div>
@@ -98,7 +98,7 @@
             <thead>
               <tr>
                 <th>#</th>
-                <th>OZ</th>
+                <th>Ordnungszahl (OZ)</th>
                 <th id="shortTextColHeader">Kurztext</th>
                 <th id="longTextColHeader">Langtext</th>
                 <th>Menge</th>
@@ -106,8 +106,8 @@
                 <th id="discountColHeader">Nachlass</th>
                 <th id="afterDiscountColHeader">Preis nach Nachlass</th>
                 <th id="vatColHeader">MwSt.</th>
-                <th>EP</th>
-                <th>GP</th>
+                <th>Einheitspreis</th>
+                <th>Gesamtpreis</th>
               </tr>
             </thead>
             <tbody></tbody>
