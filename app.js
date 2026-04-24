@@ -162,12 +162,11 @@ function wireTheme() {
 }
 
 function wireExport() {
-  el.exportBtn.addEventListener("click", () => {
+  el.exportBtn.addEventListener("click", async () => {
     if (!state.positions.length) {
       return;
     }
 
-    const wb = XLSX.utils.book_new();
     const projectRows = Object.entries(state.projectInfo).map(([k, v]) => ({ Feld: k, Wert: v }));
     const bidRows = Object.entries(state.bidInfo).map(([k, v]) => ({ Feld: k, Wert: v }));
     const offerInfoRows = [...projectRows, ...bidRows];
@@ -195,27 +194,173 @@ function wireExport() {
       Wert: entry.value,
     }));
 
-    const offerInfoSheet = XLSX.utils.json_to_sheet(offerInfoRows);
-    const positionsSheet = XLSX.utils.json_to_sheet(posRows);
-    const lvSheet = XLSX.utils.json_to_sheet(lvRows);
-    const allFieldsSheet = XLSX.utils.json_to_sheet(allRows);
-
-    styleOfferInfoSheet(offerInfoSheet, offerInfoRows);
-    stylePositionsSheet(positionsSheet, posRows);
-    styleLvStructureSheet(lvSheet, lvRows);
-    styleAllFieldsSheet(allFieldsSheet, allRows);
-
-    XLSX.utils.book_append_sheet(wb, offerInfoSheet, "Angebotinfo");
-    XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen");
-    XLSX.utils.book_append_sheet(wb, lvSheet, "LV-Struktur");
-    XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
-
     const baseName = (state.sourceFileName || "gaeb")
       .replace(/\.[^.]+$/, "")
       .trim();
     const fileName = `${baseName || "gaeb"}_export.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    if (window.ExcelJS) {
+      await exportWithExcelJs({ offerInfoRows, posRows, lvRows, allRows, fileName });
+      return;
+    }
+    exportWithSheetJs({ offerInfoRows, posRows, lvRows, allRows, fileName });
   });
+}
+
+function exportWithSheetJs({ offerInfoRows, posRows, lvRows, allRows, fileName }) {
+  const wb = XLSX.utils.book_new();
+  const offerInfoSheet = XLSX.utils.json_to_sheet(offerInfoRows);
+  const positionsSheet = XLSX.utils.json_to_sheet(posRows);
+  const lvSheet = XLSX.utils.json_to_sheet(lvRows);
+  const allFieldsSheet = XLSX.utils.json_to_sheet(allRows);
+
+  styleOfferInfoSheet(offerInfoSheet, offerInfoRows);
+  stylePositionsSheet(positionsSheet, posRows);
+  styleLvStructureSheet(lvSheet, lvRows);
+  styleAllFieldsSheet(allFieldsSheet, allRows);
+
+  XLSX.utils.book_append_sheet(wb, offerInfoSheet, "Angebotinfo");
+  XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen");
+  XLSX.utils.book_append_sheet(wb, lvSheet, "LV-Struktur");
+  XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
+  XLSX.writeFile(wb, fileName);
+}
+
+async function exportWithExcelJs({ offerInfoRows, posRows, lvRows, allRows, fileName }) {
+  const workbook = new ExcelJS.Workbook();
+  addOfferInfoSheetExcelJs(workbook, offerInfoRows);
+  addPositionsSheetExcelJs(workbook, posRows);
+  addLvSheetExcelJs(workbook, lvRows);
+  addAllFieldsSheetExcelJs(workbook, allRows);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function addOfferInfoSheetExcelJs(workbook, rows) {
+  const sheet = workbook.addWorksheet("Angebotinfo");
+  sheet.columns = [
+    { header: "Feld", key: "Feld", width: 32 },
+    { header: "Wert", key: "Wert", width: 90 },
+  ];
+  sheet.addRows(rows);
+  applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [2] });
+}
+
+function addPositionsSheetExcelJs(workbook, rows) {
+  const sheet = workbook.addWorksheet("Positionen");
+  sheet.columns = [
+    { header: "Nr", key: "Nr", width: 10 },
+    { header: "OZ", key: "OZ", width: 24 },
+    { header: "Kurztext", key: "Kurztext", width: 48 },
+    { header: "Langtext", key: "Langtext", width: 60 },
+    { header: "Menge", key: "Menge", width: 12 },
+    { header: "Einheit", key: "Einheit", width: 12 },
+    { header: "EP", key: "EP", width: 14 },
+    { header: "GP", key: "GP", width: 14 },
+    { header: "Nachlass", key: "Nachlass", width: 14 },
+    { header: "Preis nach Nachlass", key: "Preis nach Nachlass", width: 20 },
+    { header: "MwSt.", key: "MwSt.", width: 12 },
+    { header: "Waehrung", key: "Waehrung", width: 10 },
+    { header: "Bereich", key: "Bereich", width: 12 },
+  ];
+  sheet.addRows(rows);
+  applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [3, 4], rightAlignFromColumn: 5 });
+}
+
+function addLvSheetExcelJs(workbook, rows) {
+  const sheet = workbook.addWorksheet("LV-Struktur");
+  sheet.columns = [
+    { header: "Typ", key: "Typ", width: 12 },
+    { header: "Ebene", key: "Ebene", width: 8 },
+    { header: "Gruppe", key: "Gruppe", width: 42 },
+    { header: "OZ", key: "OZ", width: 24 },
+    { header: "Beschreibung", key: "Beschreibung", width: 56 },
+    { header: "Menge", key: "Menge", width: 12 },
+    { header: "Einheit", key: "Einheit", width: 12 },
+    { header: "EP", key: "EP", width: 14 },
+    { header: "GP", key: "GP", width: 14 },
+    { header: "Waehrung", key: "Waehrung", width: 12 },
+  ];
+  sheet.addRows(rows);
+  applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [5], rightAlignFromColumn: 6 });
+
+  const thinBorder = buildExcelJsBorder("thin", "FFB8C1D1");
+  for (let rowIdx = 2; rowIdx <= sheet.rowCount; rowIdx += 1) {
+    const type = String(sheet.getCell(rowIdx, 1).value || "").trim();
+    const level = Number(sheet.getCell(rowIdx, 2).value) || 0;
+    if (type !== "Gruppe") {
+      continue;
+    }
+    const isMainGroup = level === 1;
+    for (let colIdx = 1; colIdx <= sheet.columnCount; colIdx += 1) {
+      const cell = sheet.getCell(rowIdx, colIdx);
+      cell.font = { bold: true, color: { argb: "FF1F2430" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: isMainGroup ? "FFE3EAF6" : "FFF1F5FB" },
+      };
+      cell.border = isMainGroup
+        ? { ...thinBorder, top: { style: "medium", color: { argb: "FF7D889A" } } }
+        : thinBorder;
+    }
+  }
+}
+
+function addAllFieldsSheetExcelJs(workbook, rows) {
+  const sheet = workbook.addWorksheet("Alle XML-Felder");
+  sheet.columns = [
+    { header: "Nr", key: "Nr", width: 10 },
+    { header: "Pfad", key: "Pfad", width: 72 },
+    { header: "Typ", key: "Typ", width: 16 },
+    { header: "Wert", key: "Wert", width: 72 },
+  ];
+  sheet.addRows(rows);
+  applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [2, 4] });
+}
+
+function applyBasicExcelJsSheetStyle(sheet, options = {}) {
+  const wrapColumns = new Set(options.wrapColumnIndexes || []);
+  const rightAlignFromColumn = Number(options.rightAlignFromColumn || 0);
+  const thinBorder = buildExcelJsBorder("thin", "FFB8C1D1");
+  for (let rowIdx = 1; rowIdx <= sheet.rowCount; rowIdx += 1) {
+    const isHeader = rowIdx === 1;
+    for (let colIdx = 1; colIdx <= sheet.columnCount; colIdx += 1) {
+      const cell = sheet.getCell(rowIdx, colIdx);
+      cell.border = thinBorder;
+      cell.alignment = {
+        vertical: "top",
+        horizontal: !isHeader && rightAlignFromColumn && colIdx >= rightAlignFromColumn ? "right" : "left",
+        wrapText: wrapColumns.has(colIdx),
+      };
+      if (isHeader) {
+        cell.font = { bold: true, color: { argb: "FF1F2430" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFE9EEF7" },
+        };
+      }
+    }
+  }
+}
+
+function buildExcelJsBorder(style, colorArgb) {
+  return {
+    top: { style, color: { argb: colorArgb } },
+    bottom: { style: "thin", color: { argb: "FFB8C1D1" } },
+    left: { style: "thin", color: { argb: "FFB8C1D1" } },
+    right: { style: "thin", color: { argb: "FFB8C1D1" } },
+  };
 }
 
 function styleKeyValueSheet(sheet, rows) {
@@ -267,6 +412,89 @@ function styleLvStructureSheet(sheet, rows) {
     return { wch: clampColWidth(maxLen + 2, 8, 16) };
   });
   sheet["!cols"] = colWidths;
+
+  if (!sheet["!ref"]) {
+    return;
+  }
+
+  const borderColor = "FFB8C1D1";
+  const headerFill = "FFE9EEF7";
+  const mainGroupFill = "FFE3EAF6";
+  const subGroupFill = "FFF1F5FB";
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+
+  for (let c = range.s.c; c <= range.e.c; c += 1) {
+    const address = XLSX.utils.encode_cell({ r: 0, c });
+    const cell = sheet[address];
+    if (!cell) {
+      continue;
+    }
+    cell.s = {
+      ...(cell.s || {}),
+      font: { bold: true, color: { rgb: "FF1F2430" } },
+      fill: { patternType: "solid", fgColor: { rgb: headerFill } },
+      alignment: { horizontal: "left", vertical: "center" },
+      border: buildThinBorder(borderColor),
+    };
+  }
+
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx += 1) {
+    const row = rows[rowIdx];
+    const excelRow = rowIdx + 1;
+    const level = Math.max(1, Number(row.Ebene) || 1);
+    const isGroup = row.Typ === "Gruppe";
+    const isMainGroup = isGroup && level === 1;
+    const isSubGroup = isGroup && level > 1;
+
+    for (let colIdx = 0; colIdx < headers.length; colIdx += 1) {
+      const address = XLSX.utils.encode_cell({ r: excelRow, c: colIdx });
+      const cell = sheet[address];
+      if (!cell) {
+        continue;
+      }
+
+      const isIndentedColumn = colIdx === 2 || colIdx === 4; // Gruppe + Beschreibung
+      const indent = isIndentedColumn ? Math.max(0, level - 1) : 0;
+      const style = {
+        ...(cell.s || {}),
+        border: buildThinBorder(borderColor),
+        alignment: {
+          vertical: "top",
+          horizontal: colIdx >= 5 ? "right" : "left",
+          wrapText: colIdx === 4,
+          indent,
+        },
+      };
+
+      if (isMainGroup || isSubGroup) {
+        style.font = { bold: true, color: { rgb: "FF1F2430" } };
+        style.fill = {
+          patternType: "solid",
+          fgColor: { rgb: isMainGroup ? mainGroupFill : subGroupFill },
+        };
+      }
+
+      if (isMainGroup) {
+        style.border = {
+          top: { style: "medium", color: { rgb: "FF7D889A" } },
+          bottom: { style: "thin", color: { rgb: borderColor } },
+          left: { style: "thin", color: { rgb: borderColor } },
+          right: { style: "thin", color: { rgb: borderColor } },
+        };
+      }
+
+      cell.s = style;
+    }
+  }
+}
+
+function buildThinBorder(color) {
+  return {
+    top: { style: "thin", color: { rgb: color } },
+    bottom: { style: "thin", color: { rgb: color } },
+    left: { style: "thin", color: { rgb: color } },
+    right: { style: "thin", color: { rgb: color } },
+  };
 }
 
 function styleAllFieldsSheet(sheet, rows) {
@@ -610,13 +838,13 @@ function renderGroupNode(model, groupKey) {
   const isCollapsed = state.collapsedGroupIds.has(group.key);
 
   const tr = document.createElement("tr");
-  tr.className = "group-row";
+  tr.className = `group-row${group.level === 1 ? " group-row-main" : " group-row-sub"}`;
   const rangeLabel = formatGroupRangeLabel(group);
   const baseCells = [
     `<td class="group-range">${escapeHtml(rangeLabel)}</td>`,
     `<td class="group-cell" style="padding-left:${Math.max(0, group.level - 1) * 14 + 8}px">
-      <button class="group-toggle" type="button" data-group-key="${escapeHtml(group.key)}">${isCollapsed ? "▸" : "▾"}</button>
       <span>${escapeHtml(group.label)}</span>
+      <button class="group-toggle" type="button" data-group-key="${escapeHtml(group.key)}">${isCollapsed ? "▸" : "▾"}</button>
     </td>`,
   ];
   if (state.showShortTextColumn) {
@@ -661,10 +889,11 @@ function renderGroupNode(model, groupKey) {
   }
 
   for (const position of group.positions) {
+    const itemIndent = Math.max(0, position.groupChain.length) * 14 + 8;
     const rowTr = document.createElement("tr");
     rowTr.innerHTML = `
       <td>${escapeHtml(String(position.index))}</td>
-      <td>${escapeHtml(position.oz)}</td>
+      <td style="padding-left:${itemIndent}px">${escapeHtml(position.oz)}</td>
       ${state.showShortTextColumn ? `<td>${escapeHtml(position.shortText || "-")}</td>` : ""}
       ${state.showLongTextColumn ? `<td>${escapeHtml(position.longText || "-")}</td>` : ""}
       <td>${formatNumber(position.quantity)}</td>
@@ -1287,17 +1516,36 @@ function formatGroupRangeLabel(group) {
 
 function buildLvStructureRows(groupModel) {
   const rows = [];
+  let hasMainGroup = false;
   const walk = (key) => {
     const group = groupModel.groups.get(key);
     if (!group) {
       return;
     }
+    if (group.level === 1 && hasMainGroup) {
+      rows.push({
+        Typ: "",
+        Ebene: "",
+        Gruppe: "",
+        OZ: "",
+        Beschreibung: "",
+        Menge: "",
+        Einheit: "",
+        EP: "",
+        GP: "",
+        Waehrung: "",
+      });
+    }
+    if (group.level === 1) {
+      hasMainGroup = true;
+    }
+    const indent = "  ".repeat(Math.max(0, group.level - 1));
     rows.push({
       Typ: "Gruppe",
       Ebene: group.level,
-      Gruppe: group.label,
+      Gruppe: `${indent}${group.label}`,
       OZ: "",
-      Beschreibung: group.title || "-",
+      Beschreibung: group.title ? `${indent}${group.title}` : `${indent}-`,
       Menge: "",
       Einheit: "",
       EP: "",
@@ -1308,12 +1556,15 @@ function buildLvStructureRows(groupModel) {
       walk(childKey);
     }
     for (const position of group.positions) {
+      const posIndent = "  ".repeat(Math.max(0, group.level));
       rows.push({
         Typ: "Position",
         Ebene: group.level + 1,
-        Gruppe: group.label,
+        Gruppe: `${posIndent}${group.label}`,
         OZ: position.oz,
-        Beschreibung: [position.shortText, position.longText].filter((v) => v && v !== "-").join(" ").trim() || "-",
+        Beschreibung:
+          `${posIndent}${[position.shortText, position.longText].filter((v) => v && v !== "-").join(" ").trim()}`.trim() ||
+          `${posIndent}-`,
         Menge: position.quantity,
         Einheit: position.unit,
         EP: position.unitPrice,
