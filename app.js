@@ -16,7 +16,9 @@ const state = {
   showAfterDiscountColumn: true,
   showVatColumn: true,
   expertModeEnabled: false,
+  fileMetaCheckmarkTimer: null,
 };
+const APP_WEB_URL_FALLBACK = "https://paolomolo.github.io/x84-viewer/";
 
 const el = {
   dropZone: document.getElementById("dropZone"),
@@ -372,6 +374,12 @@ function addOfferInfoSheetExcelJs(workbook, rows) {
       valueCell.fill = undefined;
       continue;
     }
+
+    if (rawField === "GAEB-Datei konvertiert mit") {
+      const linkTarget = String(valueCell.value || "").trim() || APP_WEB_URL_FALLBACK;
+      valueCell.value = { text: linkTarget, hyperlink: linkTarget };
+      valueCell.font = { color: { argb: "FF111111" }, underline: false };
+    }
   }
 }
 
@@ -528,12 +536,15 @@ function buildExcelJsBorder(style, colorArgb) {
 }
 
 function buildOfferInfoRows(projectInfo, bidInfo) {
+  const appUrl = getConverterAppUrl();
   const rows = [
     { Feld: "## Projektinformationen", Wert: "" },
     ...Object.entries(projectInfo || {}).map(([key, value]) => ({ Feld: key, Wert: value })),
     { Feld: "", Wert: "" },
     { Feld: "## Angebotsinformationen", Wert: "" },
     ...Object.entries(bidInfo || {}).map(([key, value]) => ({ Feld: key, Wert: value })),
+    { Feld: "", Wert: "" },
+    { Feld: "GAEB-Datei konvertiert mit", Wert: appUrl },
   ];
   return rows;
 }
@@ -569,6 +580,30 @@ function styleOfferInfoSheet(sheet, rows) {
     { wch: clampColWidth(maxFeld + 2, 18, 32) },
     { wch: clampColWidth(maxWert + 2, 24, 90) },
   ];
+  const linkRowIndex = rows.findIndex((row) => String(row.Feld || "").trim() === "GAEB-Datei konvertiert mit");
+  if (linkRowIndex >= 0) {
+    const addr = XLSX.utils.encode_cell({ r: linkRowIndex, c: 1 });
+    if (sheet[addr]) {
+      const target = String(rows[linkRowIndex]?.Wert || "").trim() || APP_WEB_URL_FALLBACK;
+      sheet[addr].l = { Target: target };
+    }
+  }
+}
+
+function getConverterAppUrl() {
+  const { protocol, hostname, origin, pathname } = window.location;
+  const isLocalHost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]";
+  if (protocol === "http:" || protocol === "https:") {
+    if (!isLocalHost) {
+      return `${origin}${pathname || "/"}`;
+    }
+    return APP_WEB_URL_FALLBACK;
+  }
+  return APP_WEB_URL_FALLBACK;
 }
 
 function stylePositionsSheet(sheet, rows) {
@@ -804,7 +839,15 @@ function parseAndRender(xmlText, file) {
   state.positions = extractPositions(xmlDoc);
   state.allFields = extractAllFields(xmlDoc);
 
-  el.fileMeta.textContent = `Geladen: ${file.name} (${formatBytes(file.size)}) ✅`;
+  const loadedText = `Geladen: ${file.name} (${formatBytes(file.size)})`;
+  el.fileMeta.textContent = `${loadedText} ✅`;
+  if (state.fileMetaCheckmarkTimer) {
+    clearTimeout(state.fileMetaCheckmarkTimer);
+  }
+  state.fileMetaCheckmarkTimer = setTimeout(() => {
+    el.fileMeta.textContent = loadedText;
+    state.fileMetaCheckmarkTimer = null;
+  }, 5000);
   el.rawXml.textContent = xmlText.slice(0, 120000);
   if (xmlText.length > 120000) {
     el.rawXml.textContent += "\n\n... Vorschau gekuerzt ...";
@@ -1330,9 +1373,13 @@ function renderInfoGrid(container, data, emptyText) {
     if (key === "Projektname") {
       item.classList.add("full-width");
     }
+    const valueMarkup =
+      key === "Quelle"
+        ? `<span class="kv-value-muted">${escapeHtml(String(value ?? "-"))}</span>`
+        : `<strong>${escapeHtml(String(value ?? "-"))}</strong>`;
     item.innerHTML = `
       <span class="key">${escapeHtml(key)}</span>
-      <strong>${escapeHtml(String(value ?? "-"))}</strong>
+      ${valueMarkup}
     `;
     container.appendChild(item);
   }

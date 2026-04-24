@@ -196,6 +196,14 @@ button:disabled {
   color: var(--muted);
 }
 
+.kv-value-muted {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .bid-card .key {
   display: block;
   font-size: 0.82rem;
