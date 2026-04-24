@@ -15,6 +15,7 @@ const state = {
   showDiscountColumn: true,
   showAfterDiscountColumn: true,
   showVatColumn: true,
+  expertModeEnabled: false,
 };
 
 const el = {
@@ -89,6 +90,7 @@ function wireExpertMode() {
 }
 
 function setExpertMode(enabled) {
+  state.expertModeEnabled = Boolean(enabled);
   el.allFieldsPanel.classList.toggle("hidden", !enabled);
   el.xmlTreePanel.classList.toggle("hidden", !enabled);
   el.rawXmlPanel.classList.toggle("hidden", !enabled);
@@ -167,9 +169,7 @@ function wireExport() {
       return;
     }
 
-    const projectRows = Object.entries(state.projectInfo).map(([k, v]) => ({ Feld: k, Wert: v }));
-    const bidRows = Object.entries(state.bidInfo).map(([k, v]) => ({ Feld: k, Wert: v }));
-    const offerInfoRows = [...projectRows, ...bidRows];
+    const offerInfoRows = buildOfferInfoRows(state.projectInfo, state.bidInfo);
     const posRows = state.filteredPositions.map((p) => ({
       Nr: p.index,
       OZ: p.oz,
@@ -187,6 +187,11 @@ function wireExport() {
     }));
     const groupModel = buildGroupModel(state.filteredPositions);
     const lvRows = buildLvStructureRows(groupModel);
+    const includeLvDescription = lvRows.some((row) => hasMeaningfulValue(row.Beschreibung));
+    const includeLvUnit = lvRows.some((row) => hasMeaningfulValue(row.Einheit));
+    const includeLvDiscount = lvRows.some((row) => hasMeaningfulValue(row.Nachlass));
+    const includeLvAfterDiscount = lvRows.some((row) => hasMeaningfulValue(row["Preis nach Nachlass"]));
+    const includeLvVat = lvRows.some((row) => hasMeaningfulValue(row["MwSt."]));
     const allRows = state.allFields.map((entry) => ({
       Nr: entry.index,
       Pfad: entry.path,
@@ -199,38 +204,117 @@ function wireExport() {
       .trim();
     const fileName = `${baseName || "gaeb"}_export.xlsx`;
     if (window.ExcelJS) {
-      await exportWithExcelJs({ offerInfoRows, posRows, lvRows, allRows, fileName });
+      await exportWithExcelJs({
+        offerInfoRows,
+        posRows,
+        lvRows,
+        includeLvDescription,
+        includeLvUnit,
+        includeLvDiscount,
+        includeLvAfterDiscount,
+        includeLvVat,
+        allRows,
+        includeAllFields: state.expertModeEnabled,
+        fileName,
+      });
       return;
     }
-    exportWithSheetJs({ offerInfoRows, posRows, lvRows, allRows, fileName });
+    exportWithSheetJs({
+      offerInfoRows,
+      posRows,
+      lvRows,
+      includeLvDescription,
+      includeLvUnit,
+      includeLvDiscount,
+      includeLvAfterDiscount,
+      includeLvVat,
+      allRows,
+      includeAllFields: state.expertModeEnabled,
+      fileName,
+    });
   });
 }
 
-function exportWithSheetJs({ offerInfoRows, posRows, lvRows, allRows, fileName }) {
+function exportWithSheetJs({
+  offerInfoRows,
+  posRows,
+  lvRows,
+  includeLvDescription,
+  includeLvUnit,
+  includeLvDiscount,
+  includeLvAfterDiscount,
+  includeLvVat,
+  allRows,
+  includeAllFields,
+  fileName,
+}) {
   const wb = XLSX.utils.book_new();
-  const offerInfoSheet = XLSX.utils.json_to_sheet(offerInfoRows);
+  const offerInfoSheet = XLSX.utils.json_to_sheet(offerInfoRows, { skipHeader: true });
+  const lvHeaders = getLvHeaders({
+    includeDescription: includeLvDescription,
+    includeUnit: includeLvUnit,
+    includeDiscount: includeLvDiscount,
+    includeAfterDiscount: includeLvAfterDiscount,
+    includeVat: includeLvVat,
+  });
+  const lvRowsForExport = lvRows.map((row) =>
+    buildLvExportRow(row, {
+      includeDescription: includeLvDescription,
+      includeUnit: includeLvUnit,
+      includeDiscount: includeLvDiscount,
+      includeAfterDiscount: includeLvAfterDiscount,
+      includeVat: includeLvVat,
+    }));
+  const lvSheet = XLSX.utils.json_to_sheet(lvRowsForExport, { header: lvHeaders });
   const positionsSheet = XLSX.utils.json_to_sheet(posRows);
-  const lvSheet = XLSX.utils.json_to_sheet(lvRows);
-  const allFieldsSheet = XLSX.utils.json_to_sheet(allRows);
 
   styleOfferInfoSheet(offerInfoSheet, offerInfoRows);
+  styleLvStructureSheet(lvSheet, lvRowsForExport, {
+    includeDescription: includeLvDescription,
+    includeUnit: includeLvUnit,
+    includeDiscount: includeLvDiscount,
+    includeAfterDiscount: includeLvAfterDiscount,
+    includeVat: includeLvVat,
+  });
   stylePositionsSheet(positionsSheet, posRows);
-  styleLvStructureSheet(lvSheet, lvRows);
-  styleAllFieldsSheet(allFieldsSheet, allRows);
 
   XLSX.utils.book_append_sheet(wb, offerInfoSheet, "Angebotinfo");
-  XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen");
-  XLSX.utils.book_append_sheet(wb, lvSheet, "LV-Struktur");
-  XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
+  XLSX.utils.book_append_sheet(wb, lvSheet, "Positionen (Gruppiert)");
+  XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen (Liste)");
+  if (includeAllFields) {
+    const allFieldsSheet = XLSX.utils.json_to_sheet(allRows);
+    styleAllFieldsSheet(allFieldsSheet, allRows);
+    XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
+  }
   XLSX.writeFile(wb, fileName);
 }
 
-async function exportWithExcelJs({ offerInfoRows, posRows, lvRows, allRows, fileName }) {
+async function exportWithExcelJs({
+  offerInfoRows,
+  posRows,
+  lvRows,
+  includeLvDescription,
+  includeLvUnit,
+  includeLvDiscount,
+  includeLvAfterDiscount,
+  includeLvVat,
+  allRows,
+  includeAllFields,
+  fileName,
+}) {
   const workbook = new ExcelJS.Workbook();
   addOfferInfoSheetExcelJs(workbook, offerInfoRows);
+  addLvSheetExcelJs(workbook, lvRows, {
+    includeDescription: includeLvDescription,
+    includeUnit: includeLvUnit,
+    includeDiscount: includeLvDiscount,
+    includeAfterDiscount: includeLvAfterDiscount,
+    includeVat: includeLvVat,
+  });
   addPositionsSheetExcelJs(workbook, posRows);
-  addLvSheetExcelJs(workbook, lvRows);
-  addAllFieldsSheetExcelJs(workbook, allRows);
+  if (includeAllFields) {
+    addAllFieldsSheetExcelJs(workbook, allRows);
+  }
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -248,20 +332,58 @@ async function exportWithExcelJs({ offerInfoRows, posRows, lvRows, allRows, file
 function addOfferInfoSheetExcelJs(workbook, rows) {
   const sheet = workbook.addWorksheet("Angebotinfo");
   sheet.columns = [
-    { header: "Feld", key: "Feld", width: 32 },
-    { header: "Wert", key: "Wert", width: 90 },
+    { key: "Feld", width: 32 },
+    { key: "Wert", width: 90 },
   ];
   sheet.addRows(rows);
-  applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [2] });
+  applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [2], includeHeader: false, maxColumnCount: 2 });
+  const thinBorder = buildExcelJsBorder("thin", "FFB8C1D1");
+  for (let rowIdx = 1; rowIdx <= sheet.rowCount; rowIdx += 1) {
+    const fieldCell = sheet.getCell(rowIdx, 1);
+    const valueCell = sheet.getCell(rowIdx, 2);
+    const rawField = String(fieldCell.value || "").trim();
+    const rawValue = String(valueCell.value || "").trim();
+    const isSection = rawField.startsWith("## ");
+    const isSpacer = !rawField && !rawValue;
+
+    if (isSection) {
+      const sectionTitle = rawField.replace(/^##\s*/, "");
+      sheet.mergeCells(rowIdx, 1, rowIdx, 2);
+      const mergedCell = sheet.getCell(rowIdx, 1);
+      mergedCell.value = sectionTitle;
+      mergedCell.font = { bold: true, color: { argb: "FF1F2430" } };
+      mergedCell.alignment = { horizontal: "left", vertical: "middle" };
+      mergedCell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE3EAF6" },
+      };
+      mergedCell.border = {
+        ...thinBorder,
+        top: { style: "medium", color: { argb: "FF7D889A" } },
+      };
+      continue;
+    }
+
+    if (isSpacer) {
+      fieldCell.border = {};
+      valueCell.border = {};
+      fieldCell.fill = undefined;
+      valueCell.fill = undefined;
+      continue;
+    }
+  }
 }
 
 function addPositionsSheetExcelJs(workbook, rows) {
-  const sheet = workbook.addWorksheet("Positionen");
+  const shortTextWidth = computeExcelJsColumnWidth(rows, "Kurztext", 24, 54);
+  const longTextWidth = computeExcelJsColumnWidth(rows, "Langtext", 28, 68);
+  const sheet = workbook.addWorksheet("Positionen (Liste)");
   sheet.columns = [
     { header: "Nr", key: "Nr", width: 10 },
     { header: "OZ", key: "OZ", width: 24 },
-    { header: "Kurztext", key: "Kurztext", width: 48 },
-    { header: "Langtext", key: "Langtext", width: 60 },
+    { header: "Kurztext", key: "Kurztext", width: shortTextWidth },
+    { header: "Langtext", key: "Langtext", width: longTextWidth },
     { header: "Menge", key: "Menge", width: 12 },
     { header: "Einheit", key: "Einheit", width: 12 },
     { header: "EP", key: "EP", width: 14 },
@@ -276,22 +398,56 @@ function addPositionsSheetExcelJs(workbook, rows) {
   applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [3, 4], rightAlignFromColumn: 5 });
 }
 
-function addLvSheetExcelJs(workbook, rows) {
-  const sheet = workbook.addWorksheet("LV-Struktur");
-  sheet.columns = [
+function addLvSheetExcelJs(workbook, rows, options) {
+  const includeDescription = options?.includeDescription !== false;
+  const includeUnit = options?.includeUnit !== false;
+  const includeDiscount = Boolean(options?.includeDiscount);
+  const includeAfterDiscount = Boolean(options?.includeAfterDiscount);
+  const includeVat = Boolean(options?.includeVat);
+  const groupWidth = computeExcelJsColumnWidth(rows, "Gruppe", 16, 30);
+  const descriptionWidth = includeDescription
+    ? computeExcelJsColumnWidth(rows, "Beschreibung", 24, 50)
+    : 0;
+  const lvColumns = [
     { header: "Typ", key: "Typ", width: 12 },
     { header: "Ebene", key: "Ebene", width: 8 },
-    { header: "Gruppe", key: "Gruppe", width: 42 },
+    { header: "Gruppe", key: "Gruppe", width: groupWidth },
     { header: "OZ", key: "OZ", width: 24 },
-    { header: "Beschreibung", key: "Beschreibung", width: 56 },
+    ...(includeDescription ? [{ header: "Beschreibung", key: "Beschreibung", width: descriptionWidth }] : []),
     { header: "Menge", key: "Menge", width: 12 },
-    { header: "Einheit", key: "Einheit", width: 12 },
+    ...(includeUnit ? [{ header: "Einheit", key: "Einheit", width: 12 }] : []),
     { header: "EP", key: "EP", width: 14 },
     { header: "GP", key: "GP", width: 14 },
+    ...(includeDiscount ? [{ header: "Nachlass", key: "Nachlass", width: 14 }] : []),
+    ...(includeAfterDiscount ? [{ header: "Preis nach Nachlass", key: "Preis nach Nachlass", width: 20 }] : []),
+    ...(includeVat ? [{ header: "MwSt.", key: "MwSt.", width: 12 }] : []),
     { header: "Waehrung", key: "Waehrung", width: 12 },
   ];
-  sheet.addRows(rows);
-  applyBasicExcelJsSheetStyle(sheet, { wrapColumnIndexes: [5], rightAlignFromColumn: 6 });
+  const rowsForExport = rows.map((row) =>
+    buildLvExportRow(row, {
+      includeDescription,
+      includeUnit,
+      includeDiscount,
+      includeAfterDiscount,
+      includeVat,
+    }));
+  const sheet = workbook.addWorksheet("Positionen (Gruppiert)");
+  sheet.columns = lvColumns;
+  sheet.addRows(rowsForExport);
+  const rightAlignColumnIndexes = lvColumns
+    .map((col, idx) => ({ key: col.key, idx: idx + 1 }))
+    .filter((entry) => ["Menge", "EP", "GP", "Nachlass", "Preis nach Nachlass", "MwSt."].includes(entry.key))
+    .map((entry) => entry.idx);
+  applyBasicExcelJsSheetStyle(
+    sheet,
+    {
+      wrapColumnIndexes: lvColumns
+        .map((col, idx) => ({ key: col.key, idx: idx + 1 }))
+        .filter((entry) => entry.key === "Beschreibung")
+        .map((entry) => entry.idx),
+      rightAlignColumnIndexes,
+    },
+  );
 
   const thinBorder = buildExcelJsBorder("thin", "FFB8C1D1");
   for (let rowIdx = 2; rowIdx <= sheet.rowCount; rowIdx += 1) {
@@ -331,15 +487,23 @@ function addAllFieldsSheetExcelJs(workbook, rows) {
 function applyBasicExcelJsSheetStyle(sheet, options = {}) {
   const wrapColumns = new Set(options.wrapColumnIndexes || []);
   const rightAlignFromColumn = Number(options.rightAlignFromColumn || 0);
+  const rightAlignColumns = new Set(options.rightAlignColumnIndexes || []);
+  const includeHeader = options.includeHeader !== false;
+  const maxColumnCount = Number(options.maxColumnCount || 0);
   const thinBorder = buildExcelJsBorder("thin", "FFB8C1D1");
+  const columnCount = maxColumnCount > 0 ? Math.min(sheet.columnCount, maxColumnCount) : sheet.columnCount;
   for (let rowIdx = 1; rowIdx <= sheet.rowCount; rowIdx += 1) {
-    const isHeader = rowIdx === 1;
-    for (let colIdx = 1; colIdx <= sheet.columnCount; colIdx += 1) {
+    const isHeader = includeHeader && rowIdx === 1;
+    for (let colIdx = 1; colIdx <= columnCount; colIdx += 1) {
       const cell = sheet.getCell(rowIdx, colIdx);
       cell.border = thinBorder;
+      const shouldRightAlign =
+        !isHeader &&
+        (rightAlignColumns.has(colIdx) ||
+          (rightAlignFromColumn && colIdx >= rightAlignFromColumn));
       cell.alignment = {
         vertical: "top",
-        horizontal: !isHeader && rightAlignFromColumn && colIdx >= rightAlignFromColumn ? "right" : "left",
+        horizontal: shouldRightAlign ? "right" : "left",
         wrapText: wrapColumns.has(colIdx),
       };
       if (isHeader) {
@@ -361,6 +525,32 @@ function buildExcelJsBorder(style, colorArgb) {
     left: { style: "thin", color: { argb: "FFB8C1D1" } },
     right: { style: "thin", color: { argb: "FFB8C1D1" } },
   };
+}
+
+function buildOfferInfoRows(projectInfo, bidInfo) {
+  const rows = [
+    { Feld: "## Projektinformationen", Wert: "" },
+    ...Object.entries(projectInfo || {}).map(([key, value]) => ({ Feld: key, Wert: value })),
+    { Feld: "", Wert: "" },
+    { Feld: "## Angebotsinformationen", Wert: "" },
+    ...Object.entries(bidInfo || {}).map(([key, value]) => ({ Feld: key, Wert: value })),
+  ];
+  return rows;
+}
+
+function computeExcelJsColumnWidth(rows, key, min, max) {
+  const lengths = [String(key || "").length];
+  for (const row of rows) {
+    const value = String(row?.[key] ?? "").replace(/\s+/g, " ").trim();
+    if (!value) {
+      continue;
+    }
+    lengths.push(value.length);
+  }
+  lengths.sort((a, b) => a - b);
+  const p90Index = Math.max(0, Math.min(lengths.length - 1, Math.floor(lengths.length * 0.9)));
+  const p90Len = lengths[p90Index] || lengths[0] || 0;
+  return clampColWidth(p90Len + 2, min, max);
 }
 
 function styleKeyValueSheet(sheet, rows) {
@@ -399,8 +589,8 @@ function stylePositionsSheet(sheet, rows) {
   sheet["!cols"] = colWidths;
 }
 
-function styleLvStructureSheet(sheet, rows) {
-  const headers = ["Typ", "Ebene", "Gruppe", "OZ", "Beschreibung", "Menge", "Einheit", "EP", "GP", "Waehrung"];
+function styleLvStructureSheet(sheet, rows, options = {}) {
+  const headers = getLvHeaders(options);
   const colWidths = headers.map((header) => {
     const maxLen = Math.max(header.length, ...rows.map((row) => String(row[header] ?? "").length));
     if (header === "Gruppe" || header === "Beschreibung") {
@@ -486,6 +676,63 @@ function styleLvStructureSheet(sheet, rows) {
       cell.s = style;
     }
   }
+}
+
+function getLvHeaders(options = {}) {
+  const includeDescription = options.includeDescription !== false;
+  const includeUnit = options.includeUnit !== false;
+  const includeDiscount = Boolean(options.includeDiscount);
+  const includeAfterDiscount = Boolean(options.includeAfterDiscount);
+  const includeVat = Boolean(options.includeVat);
+  return [
+    "Typ",
+    "Ebene",
+    "Gruppe",
+    "OZ",
+    ...(includeDescription ? ["Beschreibung"] : []),
+    "Menge",
+    ...(includeUnit ? ["Einheit"] : []),
+    "EP",
+    "GP",
+    ...(includeDiscount ? ["Nachlass"] : []),
+    ...(includeAfterDiscount ? ["Preis nach Nachlass"] : []),
+    ...(includeVat ? ["MwSt."] : []),
+    "Waehrung",
+  ];
+}
+
+function buildLvExportRow(row, options = {}) {
+  const includeDescription = options.includeDescription !== false;
+  const includeUnit = options.includeUnit !== false;
+  const includeDiscount = Boolean(options.includeDiscount);
+  const includeAfterDiscount = Boolean(options.includeAfterDiscount);
+  const includeVat = Boolean(options.includeVat);
+  const exportRow = {
+    Typ: row.Typ,
+    Ebene: row.Ebene,
+    Gruppe: row.Gruppe,
+    OZ: row.OZ,
+  };
+  if (includeDescription) {
+    exportRow.Beschreibung = row.Beschreibung;
+  }
+  exportRow.Menge = row.Menge;
+  if (includeUnit) {
+    exportRow.Einheit = row.Einheit;
+  }
+  exportRow.EP = row.EP;
+  exportRow.GP = row.GP;
+  if (includeDiscount) {
+    exportRow.Nachlass = row.Nachlass;
+  }
+  if (includeAfterDiscount) {
+    exportRow["Preis nach Nachlass"] = row["Preis nach Nachlass"];
+  }
+  if (includeVat) {
+    exportRow["MwSt."] = row["MwSt."];
+  }
+  exportRow.Waehrung = row.Waehrung;
+  return exportRow;
 }
 
 function buildThinBorder(color) {
@@ -1533,6 +1780,9 @@ function buildLvStructureRows(groupModel) {
         Einheit: "",
         EP: "",
         GP: "",
+        Nachlass: "",
+        "Preis nach Nachlass": "",
+        "MwSt.": "",
         Waehrung: "",
       });
     }
@@ -1550,6 +1800,9 @@ function buildLvStructureRows(groupModel) {
       Einheit: "",
       EP: "",
       GP: group.totalPrice,
+      Nachlass: "",
+      "Preis nach Nachlass": "",
+      "MwSt.": "",
       Waehrung: group.currency || "EUR",
     });
     for (const childKey of group.children) {
@@ -1569,6 +1822,9 @@ function buildLvStructureRows(groupModel) {
         Einheit: position.unit,
         EP: position.unitPrice,
         GP: position.totalPrice,
+        Nachlass: position.discount,
+        "Preis nach Nachlass": position.priceAfterDiscount,
+        "MwSt.": position.vat,
         Waehrung: position.currency,
       });
     }
