@@ -5,6 +5,7 @@ const state = {
   bidInfo: {},
   positions: [],
   filteredPositions: [],
+  allFields: [],
 };
 
 const el = {
@@ -17,6 +18,8 @@ const el = {
   bidInfo: document.getElementById("bidInfo"),
   tableBody: document.querySelector("#positionsTable tbody"),
   tableMeta: document.getElementById("tableMeta"),
+  allFieldsTableBody: document.querySelector("#allFieldsTable tbody"),
+  allFieldsMeta: document.getElementById("allFieldsMeta"),
   xmlTree: document.getElementById("xmlTree"),
   rawXml: document.getElementById("rawXml"),
   exportBtn: document.getElementById("exportBtn"),
@@ -125,18 +128,27 @@ function wireExport() {
       Waehrung: p.currency,
       Bereich: p.scope,
     }));
+    const allRows = state.allFields.map((entry) => ({
+      Nr: entry.index,
+      Pfad: entry.path,
+      Typ: entry.type,
+      Wert: entry.value,
+    }));
 
     const projectSheet = XLSX.utils.json_to_sheet(projectRows);
     const bidSheet = XLSX.utils.json_to_sheet(bidRows);
     const positionsSheet = XLSX.utils.json_to_sheet(posRows);
+    const allFieldsSheet = XLSX.utils.json_to_sheet(allRows);
 
     styleKeyValueSheet(projectSheet, projectRows);
     styleKeyValueSheet(bidSheet, bidRows);
     stylePositionsSheet(positionsSheet, posRows);
+    styleAllFieldsSheet(allFieldsSheet, allRows);
 
     XLSX.utils.book_append_sheet(wb, projectSheet, "Projekt");
     XLSX.utils.book_append_sheet(wb, bidSheet, "Angebot");
     XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen");
+    XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
 
     const fileName = `gaeb-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
@@ -166,6 +178,24 @@ function stylePositionsSheet(sheet, rows) {
       return { wch: clampColWidth(maxLen + 2, 10, 24) };
     }
     return { wch: clampColWidth(maxLen + 2, 10, 18) };
+  });
+  sheet["!cols"] = colWidths;
+}
+
+function styleAllFieldsSheet(sheet, rows) {
+  const headers = ["Nr", "Pfad", "Typ", "Wert"];
+  const colWidths = headers.map((header) => {
+    const maxLen = Math.max(
+      header.length,
+      ...rows.map((row) => String(row[header] ?? "").length),
+    );
+    if (header === "Pfad") {
+      return { wch: clampColWidth(maxLen + 2, 30, 120) };
+    }
+    if (header === "Wert") {
+      return { wch: clampColWidth(maxLen + 2, 24, 120) };
+    }
+    return { wch: clampColWidth(maxLen + 2, 8, 20) };
   });
   sheet["!cols"] = colWidths;
 }
@@ -209,6 +239,7 @@ function parseAndRender(xmlText, file) {
   state.projectInfo = extractProjectInfo(xmlDoc);
   state.bidInfo = extractBidInfo(xmlDoc);
   state.positions = extractPositions(xmlDoc);
+  state.allFields = extractAllFields(xmlDoc);
 
   el.fileMeta.textContent = `Geladen: ${file.name} (${formatBytes(file.size)})`;
   el.rawXml.textContent = xmlText.slice(0, 120000);
@@ -217,7 +248,8 @@ function parseAndRender(xmlText, file) {
   }
 
   renderInfoGrid(el.projectInfo, state.projectInfo, "Keine Projektdaten gefunden.");
-  renderInfoGrid(el.bidInfo, state.bidInfo, "Keine Angebotsdaten gefunden.");
+  renderBidInfo(state.bidInfo, "Keine Angebotsdaten gefunden.");
+  renderAllFieldsTable(state.allFields);
   renderTree(xmlDoc);
   applyFiltersAndRender();
   el.exportBtn.disabled = false;
@@ -248,11 +280,18 @@ function extractBidInfo(xmlDoc) {
   const bid = firstByLocalName(xmlDoc, "Bid");
   const ctr = firstByLocalName(xmlDoc, "CTR");
   const awardInfo = firstByLocalName(xmlDoc, "AwardInfo");
+  const address = firstByLocalName(ctr || xmlDoc, "Address");
   const bidderName =
     [deepText(ctr, ["Name1"]), deepText(ctr, ["Name2"]), deepText(ctr, ["Name"])]
       .filter(Boolean)
       .join(" ")
       .trim() || "-";
+  const addressStreet = deepText(address, ["Street"]) || "-";
+  const addressPostalCode = deepText(address, ["PCode", "PostalCode", "Zip"]) || "-";
+  const addressCity = deepText(address, ["City", "Town"]) || "-";
+  const contactPhone = deepText(address, ["Phone", "Telephone", "Tel"]) || "-";
+  const contactFax = deepText(address, ["Fax"]) || "-";
+  const contactEmail = deepText(address, ["Email", "Mail"]) || "-";
   if (!bid) {
     return {
       Bieter: bidderName,
@@ -262,6 +301,12 @@ function extractBidInfo(xmlDoc) {
         deepText(awardInfo, ["Cur", "Currency", "CurrencyCode"]) ||
         xmlDoc.documentElement.getAttribute("Cur") ||
         "EUR",
+      Strasse: addressStreet,
+      PLZ: addressPostalCode,
+      Ort: addressCity,
+      Telefon: contactPhone,
+      Fax: contactFax,
+      Email: contactEmail,
     };
   }
   return {
@@ -273,6 +318,12 @@ function extractBidInfo(xmlDoc) {
       deepText(awardInfo, ["Cur", "Currency", "CurrencyCode"]) ||
       xmlDoc.documentElement.getAttribute("Cur") ||
       "EUR",
+    Strasse: addressStreet,
+    PLZ: addressPostalCode,
+    Ort: addressCity,
+    Telefon: contactPhone,
+    Fax: contactFax,
+    Email: contactEmail,
   };
 }
 
@@ -383,6 +434,81 @@ function renderPositionsTable(rows, totalCount) {
   el.tableMeta.textContent = `${shown} von ${totalCount} Positionen sichtbar`;
 }
 
+function renderBidInfo(data, emptyText) {
+  el.bidInfo.innerHTML = "";
+  if (!data || !Object.keys(data).length) {
+    el.bidInfo.classList.add("empty-state");
+    el.bidInfo.textContent = emptyText;
+    return;
+  }
+
+  el.bidInfo.classList.remove("empty-state");
+  const bidder = String(data.Bieter || "-");
+  const addressLine = String(data.Strasse || "-");
+  const cityLine = [data.PLZ, data.Ort].filter((value) => value && value !== "-").join(" ") || "-";
+
+  const card = document.createElement("article");
+  card.className = "bid-card";
+  card.innerHTML = `
+    <span class="key">Bieter</span>
+    <div class="bid-name">${escapeHtml(bidder)}</div>
+    <div class="bid-address">${escapeHtml(addressLine)}<br>${escapeHtml(cityLine)}</div>
+    <div class="bid-contact">
+      <span>Telefon: ${escapeHtml(String(data.Telefon || "-"))}</span>
+      <span>Fax: ${escapeHtml(String(data.Fax || "-"))}</span>
+      <span>Email: ${escapeHtml(String(data.Email || "-"))}</span>
+    </div>
+  `;
+
+  el.bidInfo.appendChild(card);
+
+  const metaGrid = document.createElement("div");
+  metaGrid.className = "bid-meta-grid";
+  const metaEntries = [
+    ["Angebotsnummer", data.Angebotsnummer || "-"],
+    ["Datum", data.Datum || "-"],
+    ["Waehrung", data.Waehrung || "-"],
+  ];
+  for (const [key, value] of metaEntries) {
+    const item = document.createElement("article");
+    item.className = "kv-item";
+    item.innerHTML = `
+      <span class="key">${escapeHtml(key)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+    `;
+    metaGrid.appendChild(item);
+  }
+  el.bidInfo.appendChild(metaGrid);
+}
+
+function renderAllFieldsTable(rows) {
+  el.allFieldsTableBody.innerHTML = "";
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.className = "empty-state";
+    td.textContent = "Keine XML-Felder gefunden.";
+    tr.appendChild(td);
+    el.allFieldsTableBody.appendChild(tr);
+    el.allFieldsMeta.textContent = "0 Felder";
+    return;
+  }
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(String(row.index))}</td>
+      <td><code>${escapeHtml(row.path)}</code></td>
+      <td>${escapeHtml(row.type)}</td>
+      <td>${escapeHtml(row.value)}</td>
+    `;
+    el.allFieldsTableBody.appendChild(tr);
+  }
+
+  el.allFieldsMeta.textContent = `${rows.length} Felder sichtbar`;
+}
+
 function renderInfoGrid(container, data, emptyText) {
   container.innerHTML = "";
   const entries = Object.entries(data || {});
@@ -396,6 +522,9 @@ function renderInfoGrid(container, data, emptyText) {
   for (const [key, value] of entries) {
     const item = document.createElement("article");
     item.className = "kv-item";
+    if (key === "Projektname") {
+      item.classList.add("full-width");
+    }
     item.innerHTML = `
       <span class="key">${escapeHtml(key)}</span>
       <strong>${escapeHtml(String(value ?? "-"))}</strong>
@@ -535,6 +664,51 @@ function extractDescriptionText(node) {
     return plain.slice(0, 220);
   }
   return "";
+}
+
+function extractAllFields(xmlDoc) {
+  const root = xmlDoc.documentElement;
+  if (!root) {
+    return [];
+  }
+
+  const rows = [];
+  let idx = 1;
+
+  function walk(node, path) {
+    const children = Array.from(node.children || []);
+
+    for (const attr of Array.from(node.attributes || [])) {
+      rows.push({
+        index: idx++,
+        path: `${path}/@${attr.name}`,
+        type: "Attribut",
+        value: attr.value || "-",
+      });
+    }
+
+    const text = (node.textContent || "").trim();
+    if (!children.length && text) {
+      rows.push({
+        index: idx++,
+        path,
+        type: "Text",
+        value: text,
+      });
+      return;
+    }
+
+    const siblingCountByName = {};
+    for (const child of children) {
+      const name = localName(child);
+      siblingCountByName[name] = (siblingCountByName[name] || 0) + 1;
+      const childPath = `${path}/${name}[${siblingCountByName[name]}]`;
+      walk(child, childPath);
+    }
+  }
+
+  walk(root, `/${localName(root)}`);
+  return rows;
 }
 
 function localName(node) {

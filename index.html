@@ -35,12 +35,12 @@
           <h2>Projektinformationen</h2>
           <button id="exportBtn" class="primary-btn" type="button" disabled>Als Excel exportieren</button>
         </div>
-        <div id="projectInfo" class="kv-grid empty-state">Bitte zuerst eine GAEB-Datei laden.</div>
+        <div id="projectInfo" class="kv-grid project-info-grid empty-state">Bitte zuerst eine GAEB-Datei laden.</div>
       </section>
 
       <section class="panel">
         <h2>Angebotsdaten</h2>
-        <div id="bidInfo" class="kv-grid empty-state">Keine Angebotsdaten geladen.</div>
+        <div id="bidInfo" class="bid-info-box empty-state">Keine Angebotsdaten geladen.</div>
       </section>
 
       <section class="panel">
@@ -65,6 +65,24 @@
                 <th>Einheit</th>
                 <th>EP</th>
                 <th>GP</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Alle XML-Felder</h2>
+        <div id="allFieldsMeta" class="table-meta">0 Felder</div>
+        <div class="table-wrap">
+          <table id="allFieldsTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Pfad</th>
+                <th>Typ</th>
+                <th>Wert</th>
               </tr>
             </thead>
             <tbody></tbody>

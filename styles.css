@@ -168,6 +168,10 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.project-info-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .kv-item {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -175,10 +179,59 @@ button:disabled {
   background: var(--panel-alt);
 }
 
+.kv-item.full-width {
+  grid-column: 1 / -1;
+}
+
 .kv-item .key {
   display: block;
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+.bid-card .key {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.bid-info-box {
+  min-height: 170px;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.bid-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  background: var(--panel-alt);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.bid-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.bid-address {
+  color: var(--text);
+}
+
+.bid-contact,
+.bid-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+
+.bid-meta-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .filters {
@@ -196,6 +249,11 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 700px;
+}
+
+#allFieldsTable code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
 }
 
 th,
@@ -262,6 +320,10 @@ tbody tr:hover {
 }
 
 @media (max-width: 900px) {
+  .project-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .app-header {
     flex-direction: column;
     align-items: stretch;
