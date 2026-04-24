@@ -343,8 +343,13 @@ tbody tr.group-row:hover {
 
 .group-row td {
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text);
   background: var(--panel-alt);
+}
+
+.group-row td.group-range {
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .group-cell {

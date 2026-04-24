@@ -168,14 +168,9 @@ function wireExport() {
     }
 
     const wb = XLSX.utils.book_new();
-    const projectRows = Object.entries(state.projectInfo).map(([k, v]) => ({
-      Feld: k,
-      Wert: v,
-    }));
-    const bidRows = Object.entries(state.bidInfo).map(([k, v]) => ({
-      Feld: k,
-      Wert: v,
-    }));
+    const projectRows = Object.entries(state.projectInfo).map(([k, v]) => ({ Feld: k, Wert: v }));
+    const bidRows = Object.entries(state.bidInfo).map(([k, v]) => ({ Feld: k, Wert: v }));
+    const offerInfoRows = [...projectRows, ...bidRows];
     const posRows = state.filteredPositions.map((p) => ({
       Nr: p.index,
       OZ: p.oz,
@@ -200,20 +195,17 @@ function wireExport() {
       Wert: entry.value,
     }));
 
-    const projectSheet = XLSX.utils.json_to_sheet(projectRows);
-    const bidSheet = XLSX.utils.json_to_sheet(bidRows);
+    const offerInfoSheet = XLSX.utils.json_to_sheet(offerInfoRows);
     const positionsSheet = XLSX.utils.json_to_sheet(posRows);
     const lvSheet = XLSX.utils.json_to_sheet(lvRows);
     const allFieldsSheet = XLSX.utils.json_to_sheet(allRows);
 
-    styleKeyValueSheet(projectSheet, projectRows);
-    styleKeyValueSheet(bidSheet, bidRows);
+    styleOfferInfoSheet(offerInfoSheet, offerInfoRows);
     stylePositionsSheet(positionsSheet, posRows);
     styleLvStructureSheet(lvSheet, lvRows);
     styleAllFieldsSheet(allFieldsSheet, allRows);
 
-    XLSX.utils.book_append_sheet(wb, projectSheet, "Projekt");
-    XLSX.utils.book_append_sheet(wb, bidSheet, "Angebot");
+    XLSX.utils.book_append_sheet(wb, offerInfoSheet, "Angebotinfo");
     XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen");
     XLSX.utils.book_append_sheet(wb, lvSheet, "LV-Struktur");
     XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
@@ -235,8 +227,17 @@ function styleKeyValueSheet(sheet, rows) {
   ];
 }
 
+function styleOfferInfoSheet(sheet, rows) {
+  const maxFeld = Math.max("Feld".length, ...rows.map((r) => String(r.Feld || "").length));
+  const maxWert = Math.max("Wert".length, ...rows.map((r) => String(r.Wert || "").length));
+  sheet["!cols"] = [
+    { wch: clampColWidth(maxFeld + 2, 18, 32) },
+    { wch: clampColWidth(maxWert + 2, 24, 90) },
+  ];
+}
+
 function stylePositionsSheet(sheet, rows) {
-  const headers = ["Nr", "OZ", "Kurztext", "Langtext", "Menge", "Einheit", "Nachlass", "Preis nach Nachlass", "MwSt.", "EP", "GP", "Waehrung", "Bereich"];
+  const headers = ["Nr", "OZ", "Kurztext", "Langtext", "Menge", "Einheit", "EP", "GP", "Nachlass", "Preis nach Nachlass", "MwSt.", "Waehrung", "Bereich"];
   const colWidths = headers.map((header) => {
     const maxLen = Math.max(
       header.length,
@@ -583,11 +584,11 @@ function renderListRows(rows) {
       ${state.showLongTextColumn ? `<td>${escapeHtml(row.longText || "-")}</td>` : ""}
       <td>${formatNumber(row.quantity)}</td>
       ${state.showUnitColumn ? `<td>${escapeHtml(row.unit)}</td>` : ""}
+      <td>${formatCurrency(row.unitPrice, row.currency)}</td>
+      <td>${formatCurrency(row.totalPrice, row.currency)}</td>
       ${state.showDiscountColumn ? `<td>${escapeHtml(String(row.discount || "-"))}</td>` : ""}
       ${state.showAfterDiscountColumn ? `<td>${escapeHtml(String(row.priceAfterDiscount || "-"))}</td>` : ""}
       ${state.showVatColumn ? `<td>${escapeHtml(String(row.vat || "-"))}</td>` : ""}
-      <td>${formatCurrency(row.unitPrice, row.currency)}</td>
-      <td>${formatCurrency(row.totalPrice, row.currency)}</td>
     `;
     el.tableBody.appendChild(tr);
   }
@@ -610,8 +611,9 @@ function renderGroupNode(model, groupKey) {
 
   const tr = document.createElement("tr");
   tr.className = "group-row";
+  const rangeLabel = formatGroupRangeLabel(group);
   const baseCells = [
-    `<td></td>`,
+    `<td class="group-range">${escapeHtml(rangeLabel)}</td>`,
     `<td class="group-cell" style="padding-left:${Math.max(0, group.level - 1) * 14 + 8}px">
       <button class="group-toggle" type="button" data-group-key="${escapeHtml(group.key)}">${isCollapsed ? "▸" : "▾"}</button>
       <span>${escapeHtml(group.label)}</span>
@@ -627,6 +629,8 @@ function renderGroupNode(model, groupKey) {
   if (state.showUnitColumn) {
     baseCells.push("<td></td>");
   }
+  baseCells.push("<td></td>"); // EP
+  baseCells.push(`<td><strong>${formatCurrency(group.totalPrice, group.currency)}</strong></td>`); // GP
   if (state.showDiscountColumn) {
     baseCells.push("<td></td>");
   }
@@ -636,8 +640,6 @@ function renderGroupNode(model, groupKey) {
   if (state.showVatColumn) {
     baseCells.push("<td></td>");
   }
-  baseCells.push("<td></td>"); // EP
-  baseCells.push(`<td><strong>${formatCurrency(group.totalPrice, group.currency)}</strong></td>`); // GP
   tr.innerHTML = baseCells.join("");
   const toggle = tr.querySelector(".group-toggle");
   toggle?.addEventListener("click", () => {
@@ -667,11 +669,11 @@ function renderGroupNode(model, groupKey) {
       ${state.showLongTextColumn ? `<td>${escapeHtml(position.longText || "-")}</td>` : ""}
       <td>${formatNumber(position.quantity)}</td>
       ${state.showUnitColumn ? `<td>${escapeHtml(position.unit)}</td>` : ""}
+      <td>${formatCurrency(position.unitPrice, position.currency)}</td>
+      <td>${formatCurrency(position.totalPrice, position.currency)}</td>
       ${state.showDiscountColumn ? `<td>${escapeHtml(String(position.discount || "-"))}</td>` : ""}
       ${state.showAfterDiscountColumn ? `<td>${escapeHtml(String(position.priceAfterDiscount || "-"))}</td>` : ""}
       ${state.showVatColumn ? `<td>${escapeHtml(String(position.vat || "-"))}</td>` : ""}
-      <td>${formatCurrency(position.unitPrice, position.currency)}</td>
-      <td>${formatCurrency(position.totalPrice, position.currency)}</td>
     `;
     el.tableBody.appendChild(rowTr);
   }
@@ -1200,6 +1202,8 @@ function buildGroupModel(rows) {
         positions: [],
         totalPrice: 0,
         currency: "EUR",
+        minIndex: null,
+        maxIndex: null,
       });
       if (!parentKey) {
         roots.push(group.key);
@@ -1233,14 +1237,33 @@ function buildGroupModel(rows) {
   const aggregate = (key) => {
     const group = groups.get(key);
     if (!group) {
-      return 0;
+      return { total: 0, minIndex: null, maxIndex: null };
     }
     let total = group.totalPrice;
+    let minIndex = null;
+    let maxIndex = null;
+    for (const pos of group.positions) {
+      const idx = Number(pos.index);
+      if (!Number.isFinite(idx)) {
+        continue;
+      }
+      minIndex = minIndex === null ? idx : Math.min(minIndex, idx);
+      maxIndex = maxIndex === null ? idx : Math.max(maxIndex, idx);
+    }
     for (const childKey of group.children) {
-      total += aggregate(childKey);
+      const childAgg = aggregate(childKey);
+      total += childAgg.total;
+      if (Number.isFinite(childAgg.minIndex)) {
+        minIndex = minIndex === null ? childAgg.minIndex : Math.min(minIndex, childAgg.minIndex);
+      }
+      if (Number.isFinite(childAgg.maxIndex)) {
+        maxIndex = maxIndex === null ? childAgg.maxIndex : Math.max(maxIndex, childAgg.maxIndex);
+      }
     }
     group.totalPrice = total;
-    return total;
+    group.minIndex = minIndex;
+    group.maxIndex = maxIndex;
+    return { total, minIndex, maxIndex };
   };
 
   for (const rootKey of roots) {
@@ -1248,6 +1271,18 @@ function buildGroupModel(rows) {
   }
 
   return { groups, roots };
+}
+
+function formatGroupRangeLabel(group) {
+  const min = Number(group?.minIndex);
+  const max = Number(group?.maxIndex);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return "";
+  }
+  if (min === max) {
+    return `(${min})`;
+  }
+  return `(${min}-${max})`;
 }
 
 function buildLvStructureRows(groupModel) {
