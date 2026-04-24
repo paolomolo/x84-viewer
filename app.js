@@ -382,6 +382,9 @@ function extractBidInfo(xmlDoc) {
   const contactEmail = deepText(address, ["Email", "Mail"]) || "-";
   const vatPercent = deepText(boqInfo, ["VAT"]) || "-";
   const vatAmount = deepText(boqInfo, ["VATAmount"]) || "-";
+  const totalNet = deepText(boqInfo, ["Total"]) || "-";
+  const discountAmount = deepText(boqInfo, ["DiscountAmt"]) || "-";
+  const totalAfterDiscount = deepText(boqInfo, ["TotAfterDisc"]) || "-";
   const totalGross = deepText(boqInfo, ["TotalGross"]) || "-";
   if (!bid) {
     return {
@@ -400,6 +403,9 @@ function extractBidInfo(xmlDoc) {
       Email: contactEmail,
       "MwSt.": vatPercent,
       "MwSt.-Betrag": vatAmount,
+      "Gesamt (netto)": totalNet,
+      "Nachlass gesamt": discountAmount,
+      "Netto nach Nachlass": totalAfterDiscount,
       "Gesamt (brutto)": totalGross,
     };
   }
@@ -420,6 +426,9 @@ function extractBidInfo(xmlDoc) {
     Email: contactEmail,
     "MwSt.": vatPercent,
     "MwSt.-Betrag": vatAmount,
+    "Gesamt (netto)": totalNet,
+    "Nachlass gesamt": discountAmount,
+    "Netto nach Nachlass": totalAfterDiscount,
     "Gesamt (brutto)": totalGross,
   };
 }
@@ -740,12 +749,13 @@ function renderBidInfo(data, emptyText) {
 
   const metaGrid = document.createElement("div");
   metaGrid.className = "bid-meta-grid";
-  const metaEntries = [
-    ["Waehrung", data.Waehrung || "-"],
-    ["MwSt.", data["MwSt."] || "-"],
-    ["MwSt.-Betrag", data["MwSt.-Betrag"] || "-"],
-    ["Gesamt (brutto)", data["Gesamt (brutto)"] || "-"],
-  ];
+  const metaEntries = [["Waehrung", data.Waehrung || "-"], ["MwSt.", data["MwSt."] || "-"], ["MwSt.-Betrag", data["MwSt.-Betrag"] || "-"], ["Gesamt (netto)", data["Gesamt (netto)"] || "-"], ["Gesamt (brutto)", data["Gesamt (brutto)"] || "-"]];
+  if (hasMeaningfulValue(data["Nachlass gesamt"])) {
+    metaEntries.push(["Nachlass gesamt", data["Nachlass gesamt"]]);
+  }
+  if (hasMeaningfulValue(data["Netto nach Nachlass"])) {
+    metaEntries.push(["Netto nach Nachlass", data["Netto nach Nachlass"]]);
+  }
   for (const [key, value] of metaEntries) {
     const item = document.createElement("article");
     item.className = "kv-item";
@@ -764,7 +774,15 @@ function formatBidMetaValue(key, value, currency) {
     return "-";
   }
   const numeric = toNumber(raw);
-  if ((key === "MwSt.-Betrag" || key === "Gesamt (brutto)") && Number.isFinite(numeric) && numeric !== 0) {
+  if (
+    (key === "MwSt.-Betrag" ||
+      key === "Gesamt (netto)" ||
+      key === "Gesamt (brutto)" ||
+      key === "Nachlass gesamt" ||
+      key === "Netto nach Nachlass") &&
+    Number.isFinite(numeric) &&
+    numeric !== 0
+  ) {
     return formatCurrency(numeric, currency);
   }
   if (key === "MwSt." && Number.isFinite(numeric)) {
