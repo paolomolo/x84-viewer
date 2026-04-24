@@ -1,6 +1,7 @@
 const state = {
   rawXml: "",
   xmlDoc: null,
+  sourceFileName: "",
   projectInfo: {},
   bidInfo: {},
   positions: [],
@@ -8,6 +9,12 @@ const state = {
   allFields: [],
   viewMode: "grouped",
   collapsedGroupIds: new Set(),
+  showUnitColumn: true,
+  showShortTextColumn: true,
+  showLongTextColumn: true,
+  showDiscountColumn: true,
+  showAfterDiscountColumn: true,
+  showVatColumn: true,
 };
 
 const el = {
@@ -20,6 +27,12 @@ const el = {
   bidInfo: document.getElementById("bidInfo"),
   tableBody: document.querySelector("#positionsTable tbody"),
   tableMeta: document.getElementById("tableMeta"),
+  unitColHeader: document.getElementById("unitColHeader"),
+  shortTextColHeader: document.getElementById("shortTextColHeader"),
+  longTextColHeader: document.getElementById("longTextColHeader"),
+  discountColHeader: document.getElementById("discountColHeader"),
+  afterDiscountColHeader: document.getElementById("afterDiscountColHeader"),
+  vatColHeader: document.getElementById("vatColHeader"),
   allFieldsTableBody: document.querySelector("#allFieldsTable tbody"),
   allFieldsMeta: document.getElementById("allFieldsMeta"),
   xmlTree: document.getElementById("xmlTree"),
@@ -32,6 +45,8 @@ const el = {
   groupedViewBtn: document.getElementById("groupedViewBtn"),
   listViewBtn: document.getElementById("listViewBtn"),
   allFieldsPanel: document.getElementById("allFieldsPanel"),
+  xmlTreePanel: document.getElementById("xmlTreePanel"),
+  rawXmlPanel: document.getElementById("rawXmlPanel"),
   expertToggle: document.getElementById("expertToggle"),
   themeToggle: document.getElementById("themeToggle"),
 };
@@ -75,6 +90,8 @@ function wireExpertMode() {
 
 function setExpertMode(enabled) {
   el.allFieldsPanel.classList.toggle("hidden", !enabled);
+  el.xmlTreePanel.classList.toggle("hidden", !enabled);
+  el.rawXmlPanel.classList.toggle("hidden", !enabled);
   el.expertToggle.textContent = enabled ? "Expertenmodus: An" : "Expertenmodus: Aus";
   localStorage.setItem("gaeb-expert-mode", enabled ? "1" : "0");
 }
@@ -161,11 +178,14 @@ function wireExport() {
     }));
     const posRows = state.filteredPositions.map((p) => ({
       Nr: p.index,
-      Gruppe: p.groupDisplay || "-",
       OZ: p.oz,
-      Beschreibung: p.description,
+      Kurztext: p.shortText,
+      Langtext: p.longText,
       Menge: p.quantity,
       Einheit: p.unit,
+      Nachlass: p.discount,
+      "Preis nach Nachlass": p.priceAfterDiscount,
+      "MwSt.": p.vat,
       EP: p.unitPrice,
       GP: p.totalPrice,
       Waehrung: p.currency,
@@ -198,7 +218,10 @@ function wireExport() {
     XLSX.utils.book_append_sheet(wb, lvSheet, "LV-Struktur");
     XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
 
-    const fileName = `gaeb-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const baseName = (state.sourceFileName || "gaeb")
+      .replace(/\.[^.]+$/, "")
+      .trim();
+    const fileName = `${baseName || "gaeb"}_export.xlsx`;
     XLSX.writeFile(wb, fileName);
   });
 }
@@ -213,17 +236,14 @@ function styleKeyValueSheet(sheet, rows) {
 }
 
 function stylePositionsSheet(sheet, rows) {
-  const headers = ["Nr", "Gruppe", "OZ", "Beschreibung", "Menge", "Einheit", "EP", "GP", "Waehrung", "Bereich"];
+  const headers = ["Nr", "OZ", "Kurztext", "Langtext", "Menge", "Einheit", "Nachlass", "Preis nach Nachlass", "MwSt.", "EP", "GP", "Waehrung", "Bereich"];
   const colWidths = headers.map((header) => {
     const maxLen = Math.max(
       header.length,
       ...rows.map((row) => String(row[header] ?? "").length),
     );
-    if (header === "Beschreibung") {
+    if (header === "Kurztext" || header === "Langtext") {
       return { wch: clampColWidth(maxLen + 2, 36, 90) };
-    }
-    if (header === "Gruppe") {
-      return { wch: clampColWidth(maxLen + 2, 16, 42) };
     }
     if (header === "OZ") {
       return { wch: clampColWidth(maxLen + 2, 10, 24) };
@@ -301,6 +321,7 @@ function parseAndRender(xmlText, file) {
   }
 
   state.rawXml = xmlText;
+  state.sourceFileName = file?.name || "";
   state.xmlDoc = xmlDoc;
   state.projectInfo = extractProjectInfo(xmlDoc);
   state.bidInfo = extractBidInfo(xmlDoc);
@@ -346,6 +367,7 @@ function extractBidInfo(xmlDoc) {
   const bid = firstByLocalName(xmlDoc, "Bid");
   const ctr = firstByLocalName(xmlDoc, "CTR");
   const awardInfo = firstByLocalName(xmlDoc, "AwardInfo");
+  const boqInfo = firstByLocalName(xmlDoc, "BoQInfo");
   const address = firstByLocalName(ctr || xmlDoc, "Address");
   const bidderName =
     [deepText(ctr, ["Name1"]), deepText(ctr, ["Name2"]), deepText(ctr, ["Name"])]
@@ -358,6 +380,9 @@ function extractBidInfo(xmlDoc) {
   const contactPhone = deepText(address, ["Phone", "Telephone", "Tel"]) || "-";
   const contactFax = deepText(address, ["Fax"]) || "-";
   const contactEmail = deepText(address, ["Email", "Mail"]) || "-";
+  const vatPercent = deepText(boqInfo, ["VAT"]) || "-";
+  const vatAmount = deepText(boqInfo, ["VATAmount"]) || "-";
+  const totalGross = deepText(boqInfo, ["TotalGross"]) || "-";
   if (!bid) {
     return {
       Bieter: bidderName,
@@ -373,6 +398,9 @@ function extractBidInfo(xmlDoc) {
       Telefon: contactPhone,
       Fax: contactFax,
       Email: contactEmail,
+      "MwSt.": vatPercent,
+      "MwSt.-Betrag": vatAmount,
+      "Gesamt (brutto)": totalGross,
     };
   }
   return {
@@ -390,6 +418,9 @@ function extractBidInfo(xmlDoc) {
     Telefon: contactPhone,
     Fax: contactFax,
     Email: contactEmail,
+    "MwSt.": vatPercent,
+    "MwSt.-Betrag": vatAmount,
+    "Gesamt (brutto)": totalGross,
   };
 }
 
@@ -406,7 +437,8 @@ function extractPositions(xmlDoc) {
       node.getAttribute("RNoPart") ||
       node.getAttribute("ID") ||
       "-";
-    const description = extractDescriptionText(node) || collectTextSnippet(node, 220) || "-";
+    const shortText = sanitizeDescription(extractShortText(node)) || "-";
+    const longText = sanitizeDescription(extractLongText(node)) || "-";
     const quantityRaw =
       deepText(node, ["Qty", "Quantity", "QTakeoff"]) ||
       node.getAttribute("Qty") ||
@@ -423,15 +455,31 @@ function extractPositions(xmlDoc) {
       deepText(node, ["IT", "TotalPrice", "GP", "Amount"]) ||
       node.getAttribute("IT") ||
       "";
+    const discountRaw =
+      deepText(node, ["Discount", "DiscountAmt", "DiscountPercent", "Disc", "DiscountPcnt"]) ||
+      node.getAttribute("Discount") ||
+      "";
+    const priceAfterDiscountRaw =
+      deepText(node, ["PriceAfterDiscount", "TotAfterDisc", "TotalAfterDiscount", "ITAfterDisc", "NetTotal"]) ||
+      node.getAttribute("TotAfterDisc") ||
+      "";
+    const vatRaw =
+      deepText(node, ["VAT", "VATAmount", "Tax", "MwSt", "VATPcnt"]) ||
+      node.getAttribute("VAT") ||
+      "";
     const currency =
       deepText(node, ["Cur", "Currency"]) ||
       node.getAttribute("Cur") ||
       xmlDoc.documentElement.getAttribute("Cur") ||
       "EUR";
 
-    const quantity = toNumber(quantityRaw);
+    let quantity = toNumber(quantityRaw);
     const unitPrice = toNumber(unitPriceRaw);
     const totalPrice = toNumber(totalPriceRaw) || quantity * unitPrice || 0;
+    const hasExplicitQuantity = Boolean(String(quantityRaw || "").trim());
+    if (!hasExplicitQuantity && quantity === 0 && unitPrice > 0 && totalPrice > 0) {
+      quantity = totalPrice / unitPrice;
+    }
     const groupChain = extractGroupChain(node, ozRaw);
     const oz = buildDisplayOz(groupChain, ozRaw);
 
@@ -439,19 +487,24 @@ function extractPositions(xmlDoc) {
       index: idx + 1,
       oz: oz.trim(),
       ozRaw: String(ozRaw || "").trim(),
-      description: description.trim().replace(/\s+/g, " "),
+      shortText,
+      longText,
       quantity,
       unit: unit.trim(),
       unitPrice,
       totalPrice,
+      discount: formatOptionalValue(discountRaw),
+      priceAfterDiscount: formatOptionalValue(priceAfterDiscountRaw),
+      vat: formatOptionalValue(vatRaw),
       currency: currency.trim(),
       scope: inferScope(oz),
       groupChain,
       groupDisplay: groupChain.length ? groupChain[groupChain.length - 1].code : "-",
+      searchText: `${shortText} ${longText}`.toLowerCase(),
     };
   });
 
-  return positions.filter((p) => p.oz !== "-" || p.description !== "-");
+  return positions.filter((p) => p.oz !== "-" || p.shortText !== "-" || p.longText !== "-");
 }
 
 function applyFiltersAndRender() {
@@ -465,13 +518,26 @@ function applyFiltersAndRender() {
       (p.groupDisplay || "").toLowerCase().includes(search) ||
       p.groupChain.some((g) => g.label.toLowerCase().includes(search)) ||
       p.oz.toLowerCase().includes(search) ||
-      p.description.toLowerCase().includes(search);
+      (p.searchText || "").includes(search);
     const pOz = normalizeOz(p.oz);
     const matchMin = !ozMin || pOz >= ozMin;
     const matchMax = !ozMax || pOz <= ozMax;
     return matchSearch && matchMin && matchMax;
   });
 
+  state.showUnitColumn = state.filteredPositions.some((p) => (p.unit || "").trim() && (p.unit || "").trim() !== "-");
+  state.showShortTextColumn = state.filteredPositions.some((p) => hasMeaningfulValue(p.shortText));
+  state.showLongTextColumn = state.filteredPositions.some((p) => hasMeaningfulValue(p.longText));
+  state.showDiscountColumn = state.filteredPositions.some((p) => hasMeaningfulValue(p.discount));
+  state.showAfterDiscountColumn = state.filteredPositions.some((p) => hasMeaningfulValue(p.priceAfterDiscount));
+  state.showVatColumn = state.filteredPositions.some((p) => hasMeaningfulValue(p.vat));
+
+  el.unitColHeader.classList.toggle("hidden", !state.showUnitColumn);
+  el.shortTextColHeader.classList.toggle("hidden", !state.showShortTextColumn);
+  el.longTextColHeader.classList.toggle("hidden", !state.showLongTextColumn);
+  el.discountColHeader.classList.toggle("hidden", !state.showDiscountColumn);
+  el.afterDiscountColHeader.classList.toggle("hidden", !state.showAfterDiscountColumn);
+  el.vatColHeader.classList.toggle("hidden", !state.showVatColumn);
   renderPositionsTable(state.filteredPositions, state.positions.length);
 }
 
@@ -480,7 +546,7 @@ function renderPositionsTable(rows, totalCount) {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 8;
+    td.colSpan = getVisibleColumnCount();
     td.className = "empty-state";
     td.textContent = totalCount
       ? "Keine Positionen fuer aktuelle Filter gefunden."
@@ -503,11 +569,14 @@ function renderListRows(rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(String(row.index))}</td>
-      <td>${escapeHtml(row.groupDisplay || "-")}</td>
       <td>${escapeHtml(row.oz)}</td>
-      <td>${escapeHtml(row.description)}</td>
+      ${state.showShortTextColumn ? `<td>${escapeHtml(row.shortText || "-")}</td>` : ""}
+      ${state.showLongTextColumn ? `<td>${escapeHtml(row.longText || "-")}</td>` : ""}
       <td>${formatNumber(row.quantity)}</td>
-      <td>${escapeHtml(row.unit)}</td>
+      ${state.showUnitColumn ? `<td>${escapeHtml(row.unit)}</td>` : ""}
+      ${state.showDiscountColumn ? `<td>${escapeHtml(String(row.discount || "-"))}</td>` : ""}
+      ${state.showAfterDiscountColumn ? `<td>${escapeHtml(String(row.priceAfterDiscount || "-"))}</td>` : ""}
+      ${state.showVatColumn ? `<td>${escapeHtml(String(row.vat || "-"))}</td>` : ""}
       <td>${formatCurrency(row.unitPrice, row.currency)}</td>
       <td>${formatCurrency(row.totalPrice, row.currency)}</td>
     `;
@@ -532,16 +601,35 @@ function renderGroupNode(model, groupKey) {
 
   const tr = document.createElement("tr");
   tr.className = "group-row";
-  tr.innerHTML = `
-    <td></td>
-    <td class="group-cell" style="padding-left:${Math.max(0, group.level - 1) * 14 + 8}px">
+  const baseCells = [
+    `<td></td>`,
+    `<td class="group-cell" style="padding-left:${Math.max(0, group.level - 1) * 14 + 8}px">
       <button class="group-toggle" type="button" data-group-key="${escapeHtml(group.key)}">${isCollapsed ? "▸" : "▾"}</button>
       <span>${escapeHtml(group.label)}</span>
-    </td>
-    <td colspan="4"></td>
-    <td></td>
-    <td>${formatCurrency(group.totalPrice, group.currency)}</td>
-  `;
+    </td>`,
+  ];
+  if (state.showShortTextColumn) {
+    baseCells.push("<td></td>");
+  }
+  if (state.showLongTextColumn) {
+    baseCells.push("<td></td>");
+  }
+  baseCells.push("<td></td>"); // Menge
+  if (state.showUnitColumn) {
+    baseCells.push("<td></td>");
+  }
+  if (state.showDiscountColumn) {
+    baseCells.push("<td></td>");
+  }
+  if (state.showAfterDiscountColumn) {
+    baseCells.push("<td></td>");
+  }
+  if (state.showVatColumn) {
+    baseCells.push("<td></td>");
+  }
+  baseCells.push("<td></td>"); // EP
+  baseCells.push(`<td><strong>${formatCurrency(group.totalPrice, group.currency)}</strong></td>`); // GP
+  tr.innerHTML = baseCells.join("");
   const toggle = tr.querySelector(".group-toggle");
   toggle?.addEventListener("click", () => {
     if (state.collapsedGroupIds.has(group.key)) {
@@ -565,11 +653,14 @@ function renderGroupNode(model, groupKey) {
     const rowTr = document.createElement("tr");
     rowTr.innerHTML = `
       <td>${escapeHtml(String(position.index))}</td>
-      <td></td>
       <td>${escapeHtml(position.oz)}</td>
-      <td>${escapeHtml(position.description)}</td>
+      ${state.showShortTextColumn ? `<td>${escapeHtml(position.shortText || "-")}</td>` : ""}
+      ${state.showLongTextColumn ? `<td>${escapeHtml(position.longText || "-")}</td>` : ""}
       <td>${formatNumber(position.quantity)}</td>
-      <td>${escapeHtml(position.unit)}</td>
+      ${state.showUnitColumn ? `<td>${escapeHtml(position.unit)}</td>` : ""}
+      ${state.showDiscountColumn ? `<td>${escapeHtml(String(position.discount || "-"))}</td>` : ""}
+      ${state.showAfterDiscountColumn ? `<td>${escapeHtml(String(position.priceAfterDiscount || "-"))}</td>` : ""}
+      ${state.showVatColumn ? `<td>${escapeHtml(String(position.vat || "-"))}</td>` : ""}
       <td>${formatCurrency(position.unitPrice, position.currency)}</td>
       <td>${formatCurrency(position.totalPrice, position.currency)}</td>
     `;
@@ -580,6 +671,23 @@ function renderGroupNode(model, groupKey) {
 function renderGroupedRowsFromState() {
   el.tableBody.innerHTML = "";
   renderGroupedRows(state.filteredPositions);
+}
+
+function hasMeaningfulValue(value) {
+  const raw = String(value || "").trim();
+  return raw && raw !== "-";
+}
+
+function getVisibleColumnCount() {
+  return (
+    5 +
+    (state.showShortTextColumn ? 1 : 0) +
+    (state.showLongTextColumn ? 1 : 0) +
+    (state.showUnitColumn ? 1 : 0) +
+    (state.showDiscountColumn ? 1 : 0) +
+    (state.showAfterDiscountColumn ? 1 : 0) +
+    (state.showVatColumn ? 1 : 0)
+  );
 }
 
 function renderBidInfo(data, emptyText) {
@@ -608,25 +716,61 @@ function renderBidInfo(data, emptyText) {
     </div>
   `;
 
-  el.bidInfo.appendChild(card);
+  const topLayout = document.createElement("div");
+  topLayout.className = "bid-top-layout";
+  topLayout.appendChild(card);
+
+  const sideMeta = document.createElement("div");
+  sideMeta.className = "bid-side-meta";
+  const sideEntries = [
+    ["Angebotsnummer", data.Angebotsnummer || "-"],
+    ["Datum", data.Datum || "-"],
+  ];
+  for (const [key, value] of sideEntries) {
+    const item = document.createElement("article");
+    item.className = "kv-item";
+    item.innerHTML = `
+      <span class="key">${escapeHtml(key)}</span>
+      <strong>${escapeHtml(formatBidMetaValue(key, value, data.Waehrung || "EUR"))}</strong>
+    `;
+    sideMeta.appendChild(item);
+  }
+  topLayout.appendChild(sideMeta);
+  el.bidInfo.appendChild(topLayout);
 
   const metaGrid = document.createElement("div");
   metaGrid.className = "bid-meta-grid";
   const metaEntries = [
-    ["Angebotsnummer", data.Angebotsnummer || "-"],
-    ["Datum", data.Datum || "-"],
     ["Waehrung", data.Waehrung || "-"],
+    ["MwSt.", data["MwSt."] || "-"],
+    ["MwSt.-Betrag", data["MwSt.-Betrag"] || "-"],
+    ["Gesamt (brutto)", data["Gesamt (brutto)"] || "-"],
   ];
   for (const [key, value] of metaEntries) {
     const item = document.createElement("article");
     item.className = "kv-item";
     item.innerHTML = `
       <span class="key">${escapeHtml(key)}</span>
-      <strong>${escapeHtml(String(value))}</strong>
+      <strong>${escapeHtml(formatBidMetaValue(key, value, data.Waehrung || "EUR"))}</strong>
     `;
     metaGrid.appendChild(item);
   }
   el.bidInfo.appendChild(metaGrid);
+}
+
+function formatBidMetaValue(key, value, currency) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw === "-") {
+    return "-";
+  }
+  const numeric = toNumber(raw);
+  if ((key === "MwSt.-Betrag" || key === "Gesamt (brutto)") && Number.isFinite(numeric) && numeric !== 0) {
+    return formatCurrency(numeric, currency);
+  }
+  if (key === "MwSt." && Number.isFinite(numeric)) {
+    return `${formatNumber(numeric)} %`;
+  }
+  return raw;
 }
 
 function renderAllFieldsTable(rows) {
@@ -812,6 +956,61 @@ function extractDescriptionText(node) {
     return plain.slice(0, 220);
   }
   return "";
+}
+
+function extractShortText(node) {
+  return (
+    deepText(node, ["ShortText", "OutlineText", "OutlTxt", "TextOutlTxt", "Name", "Title"]) ||
+    extractDescriptionText(node)
+  );
+}
+
+function extractLongText(node) {
+  const descriptionNode = firstByLocalName(node, "Description");
+  if (!descriptionNode) {
+    return deepText(node, ["LongText", "Text", "DetailText", "Remark", "Comment"]);
+  }
+  const textChunks = [];
+  for (const child of Array.from(descriptionNode.getElementsByTagName("*")).slice(0, 150)) {
+    const tag = localName(child).toLowerCase();
+    if (["text", "span", "p", "longtext", "detailtext", "remark", "comment"].includes(tag)) {
+      const t = (child.textContent || "").trim();
+      if (t && !looksLikeNumber(t)) {
+        textChunks.push(t);
+      }
+    }
+  }
+  return textChunks.join(" ").trim() || deepText(node, ["LongText", "Text", "DetailText", "Remark", "Comment"]);
+}
+
+function sanitizeDescription(value) {
+  const text = String(value || "").trim().replace(/\s+/g, " ");
+  if (!text) {
+    return "";
+  }
+  if (looksLikeNumber(text)) {
+    return "";
+  }
+  const numericTokens = text.split(" ").filter((token) => looksLikeNumber(token));
+  if (numericTokens.length && numericTokens.length === text.split(" ").length) {
+    return "";
+  }
+  const cleaned = text.replace(/[0-9.,\s€$%/-]/g, "");
+  if (!cleaned) {
+    return "";
+  }
+  return text;
+}
+
+function formatOptionalValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "-";
+  }
+  if (!looksLikeNumber(raw)) {
+    return raw;
+  }
+  return formatNumber(toNumber(raw));
 }
 
 function extractAllFields(xmlDoc) {
@@ -1044,7 +1243,7 @@ function buildLvStructureRows(groupModel) {
         Ebene: group.level + 1,
         Gruppe: group.label,
         OZ: position.oz,
-        Beschreibung: position.description,
+        Beschreibung: [position.shortText, position.longText].filter((v) => v && v !== "-").join(" ").trim() || "-",
         Menge: position.quantity,
         Einheit: position.unit,
         EP: position.unitPrice,
