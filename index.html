@@ -78,14 +78,18 @@
         <div class="panel-header wrap">
           <h2>Positionen und Preise</h2>
           <div class="filters">
-            <div class="view-toggle" role="group" aria-label="Ansicht umschalten">
-              <button id="groupedViewBtn" class="secondary-btn" type="button">Gruppiert</button>
-              <button id="listViewBtn" class="secondary-btn" type="button">Liste</button>
+            <div class="filters-left">
+              <div class="view-toggle" role="group" aria-label="Ansicht umschalten">
+                <button id="groupedViewBtn" class="secondary-btn" type="button">Gruppiert</button>
+                <button id="listViewBtn" class="secondary-btn" type="button">Liste</button>
+              </div>
             </div>
-            <input id="searchInput" type="search" placeholder="Suche (OZ / Beschreibung)" />
-            <input id="ozMinInput" type="text" placeholder="OZ von (z. B. 01.002)" />
-            <input id="ozMaxInput" type="text" placeholder="OZ bis" />
-            <button id="resetFiltersBtn" class="secondary-btn" type="button">Filter zurücksetzen</button>
+            <div class="filters-right">
+              <input id="searchInput" type="search" placeholder="Suche (OZ / Beschreibung)" />
+              <input id="ozMinInput" type="text" placeholder="OZ von (z. B. 01.002)" />
+              <input id="ozMaxInput" type="text" placeholder="OZ bis" />
+              <button id="resetFiltersBtn" class="secondary-btn" type="button">Filter zurücksetzen</button>
+            </div>
           </div>
         </div>
         <div id="tableMeta" class="table-meta">0 Positionen</div>

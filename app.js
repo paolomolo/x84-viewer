@@ -719,9 +719,9 @@ function renderBidInfo(data, emptyText) {
     <div class="bid-name">${escapeHtml(bidder)}</div>
     <div class="bid-address">${escapeHtml(addressLine)}<br>${escapeHtml(cityLine)}</div>
     <div class="bid-contact">
-      <span>Telefon: ${escapeHtml(String(data.Telefon || "-"))}</span>
-      <span>Fax: ${escapeHtml(String(data.Fax || "-"))}</span>
-      <span>Email: ${escapeHtml(String(data.Email || "-"))}</span>
+      <div>Telefon: ${escapeHtml(String(data.Telefon || "-"))}</div>
+      <div>Fax: ${escapeHtml(String(data.Fax || "-"))}</div>
+      <div>Email: ${escapeHtml(String(data.Email || "-"))}</div>
     </div>
   `;
 
@@ -732,8 +732,9 @@ function renderBidInfo(data, emptyText) {
   const sideMeta = document.createElement("div");
   sideMeta.className = "bid-side-meta";
   const sideEntries = [
-    ["Angebotsnummer", data.Angebotsnummer || "-"],
     ["Datum", data.Datum || "-"],
+    ["Angebotsnummer", data.Angebotsnummer || "-"],
+    ["Waehrung", data.Waehrung || "-"],
   ];
   for (const [key, value] of sideEntries) {
     const item = document.createElement("article");
@@ -749,13 +750,18 @@ function renderBidInfo(data, emptyText) {
 
   const metaGrid = document.createElement("div");
   metaGrid.className = "bid-meta-grid";
-  const metaEntries = [["Waehrung", data.Waehrung || "-"], ["MwSt.", data["MwSt."] || "-"], ["MwSt.-Betrag", data["MwSt.-Betrag"] || "-"], ["Gesamt (netto)", data["Gesamt (netto)"] || "-"], ["Gesamt (brutto)", data["Gesamt (brutto)"] || "-"]];
+  const vatLabelSuffix = hasMeaningfulValue(data["MwSt."])
+    ? ` (${formatVatPercent(data["MwSt."])})`
+    : "";
+  const metaEntries = [["Gesamt (netto)", data["Gesamt (netto)"] || "-"]];
   if (hasMeaningfulValue(data["Nachlass gesamt"])) {
     metaEntries.push(["Nachlass gesamt", data["Nachlass gesamt"]]);
   }
   if (hasMeaningfulValue(data["Netto nach Nachlass"])) {
     metaEntries.push(["Netto nach Nachlass", data["Netto nach Nachlass"]]);
   }
+  metaEntries.push([`MwSt.${vatLabelSuffix}`, data["MwSt.-Betrag"] || "-"]);
+  metaEntries.push(["Gesamt (brutto)", data["Gesamt (brutto)"] || "-"]);
   for (const [key, value] of metaEntries) {
     const item = document.createElement("article");
     item.className = "kv-item";
@@ -774,8 +780,11 @@ function formatBidMetaValue(key, value, currency) {
     return "-";
   }
   const numeric = toNumber(raw);
+  if (key === "MwSt.") {
+    return formatVatPercent(raw);
+  }
   if (
-    (key === "MwSt.-Betrag" ||
+    (key.startsWith("MwSt.") ||
       key === "Gesamt (netto)" ||
       key === "Gesamt (brutto)" ||
       key === "Nachlass gesamt" ||
@@ -789,6 +798,14 @@ function formatBidMetaValue(key, value, currency) {
     return `${formatNumber(numeric)} %`;
   }
   return raw;
+}
+
+function formatVatPercent(value) {
+  const numeric = toNumber(value);
+  if (!Number.isFinite(numeric)) {
+    return String(value || "-");
+  }
+  return `${formatNumber(numeric)} %`;
 }
 
 function renderAllFieldsTable(rows) {

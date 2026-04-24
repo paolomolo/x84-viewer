@@ -249,9 +249,8 @@ button:disabled {
 
 .bid-contact,
 .bid-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 1rem;
+  display: grid;
+  gap: 0.2rem;
   color: var(--muted);
   font-size: 0.93rem;
 }
@@ -266,6 +265,21 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  width: 100%;
+  align-items: center;
+}
+
+.filters-left {
+  display: flex;
+  align-items: center;
+}
+
+.filters-right {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 .view-toggle {
