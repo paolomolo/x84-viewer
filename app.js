@@ -580,14 +580,6 @@ function styleOfferInfoSheet(sheet, rows) {
     { wch: clampColWidth(maxFeld + 2, 18, 32) },
     { wch: clampColWidth(maxWert + 2, 24, 90) },
   ];
-  const linkRowIndex = rows.findIndex((row) => String(row.Feld || "").trim() === "GAEB-Datei konvertiert mit");
-  if (linkRowIndex >= 0) {
-    const addr = XLSX.utils.encode_cell({ r: linkRowIndex, c: 1 });
-    if (sheet[addr]) {
-      const target = String(rows[linkRowIndex]?.Wert || "").trim() || APP_WEB_URL_FALLBACK;
-      sheet[addr].l = { Target: target };
-    }
-  }
 }
 
 function getConverterAppUrl() {
