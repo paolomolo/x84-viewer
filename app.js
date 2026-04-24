@@ -126,13 +126,52 @@ function wireExport() {
       Bereich: p.scope,
     }));
 
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projectRows), "Projekt");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bidRows), "Angebot");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(posRows), "Positionen");
+    const projectSheet = XLSX.utils.json_to_sheet(projectRows);
+    const bidSheet = XLSX.utils.json_to_sheet(bidRows);
+    const positionsSheet = XLSX.utils.json_to_sheet(posRows);
+
+    styleKeyValueSheet(projectSheet, projectRows);
+    styleKeyValueSheet(bidSheet, bidRows);
+    stylePositionsSheet(positionsSheet, posRows);
+
+    XLSX.utils.book_append_sheet(wb, projectSheet, "Projekt");
+    XLSX.utils.book_append_sheet(wb, bidSheet, "Angebot");
+    XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen");
 
     const fileName = `gaeb-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
   });
+}
+
+function styleKeyValueSheet(sheet, rows) {
+  const keyLength = Math.max("Feld".length, ...rows.map((r) => String(r.Feld || "").length));
+  const valueLength = Math.max("Wert".length, ...rows.map((r) => String(r.Wert || "").length));
+  sheet["!cols"] = [
+    { wch: clampColWidth(keyLength + 2, 18, 32) },
+    { wch: clampColWidth(valueLength + 2, 24, 90) },
+  ];
+}
+
+function stylePositionsSheet(sheet, rows) {
+  const headers = ["Nr", "OZ", "Beschreibung", "Menge", "Einheit", "EP", "GP", "Waehrung", "Bereich"];
+  const colWidths = headers.map((header) => {
+    const maxLen = Math.max(
+      header.length,
+      ...rows.map((row) => String(row[header] ?? "").length),
+    );
+    if (header === "Beschreibung") {
+      return { wch: clampColWidth(maxLen + 2, 36, 90) };
+    }
+    if (header === "OZ") {
+      return { wch: clampColWidth(maxLen + 2, 10, 24) };
+    }
+    return { wch: clampColWidth(maxLen + 2, 10, 18) };
+  });
+  sheet["!cols"] = colWidths;
+}
+
+function clampColWidth(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 async function handleFile(file) {
@@ -186,29 +225,52 @@ function parseAndRender(xmlText, file) {
 
 function extractProjectInfo(xmlDoc) {
   const project = firstByLocalName(xmlDoc, "Project");
+  const prjInfo = firstByLocalName(xmlDoc, "PrjInfo");
   const tender = firstByLocalName(xmlDoc, "Tender");
+  const award = firstByLocalName(xmlDoc, "Award");
+  const boqInfo = firstByLocalName(xmlDoc, "BoQInfo");
   return {
-    Projektname: deepText(project, ["Name", "Description", "Title"]) || "-",
+    Projektname:
+      deepText(prjInfo, ["LblPrj", "Name", "Description", "Title"]) ||
+      deepText(project, ["Name", "Description", "Title"]) ||
+      "-",
     "Projekt-ID": deepText(project, ["ID", "ProjectNo", "Number"]) || "-",
-    "LV-Bezeichnung": deepText(tender, ["Name", "Description", "Title"]) || "-",
-    Vergabeart: deepText(tender, ["Award", "Type", "Procedure"]) || "-",
+    "LV-Bezeichnung":
+      deepText(boqInfo, ["Name", "Description", "Title"]) ||
+      deepText(tender, ["Name", "Description", "Title"]) ||
+      "-",
+    Vergabeart: deepText(award, ["DP", "Award", "Type", "Procedure"]) || deepText(tender, ["Award", "Type", "Procedure"]) || "-",
     Quelle: xmlDoc.documentElement.getAttribute("xmlns") || "GAEB",
   };
 }
 
 function extractBidInfo(xmlDoc) {
   const bid = firstByLocalName(xmlDoc, "Bid");
+  const ctr = firstByLocalName(xmlDoc, "CTR");
+  const awardInfo = firstByLocalName(xmlDoc, "AwardInfo");
+  const bidderName =
+    [deepText(ctr, ["Name1"]), deepText(ctr, ["Name2"]), deepText(ctr, ["Name"])]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || "-";
   if (!bid) {
     return {
-      Hinweis: "Kein <Bid>-Element gefunden.",
+      Bieter: bidderName,
+      Angebotsnummer: deepText(ctr, ["AcctsPayNo"]) || "-",
+      Datum: deepText(xmlDoc, ["Date", "IssueDate", "Created"]) || "-",
+      Waehrung:
+        deepText(awardInfo, ["Cur", "Currency", "CurrencyCode"]) ||
+        xmlDoc.documentElement.getAttribute("Cur") ||
+        "EUR",
     };
   }
   return {
-    Bieter: deepText(bid, ["Bidder", "Company", "Name"]) || "-",
-    Angebotsnummer: deepText(bid, ["ID", "BidNo", "Number"]) || "-",
+    Bieter: deepText(bid, ["Bidder", "Company", "Name"]) || bidderName,
+    Angebotsnummer: deepText(bid, ["ID", "BidNo", "Number"]) || deepText(ctr, ["AcctsPayNo"]) || "-",
     Datum: deepText(bid, ["Date", "IssueDate", "Created"]) || "-",
     Waehrung:
       deepText(bid, ["Currency", "CurrencyCode"]) ||
+      deepText(awardInfo, ["Cur", "Currency", "CurrencyCode"]) ||
       xmlDoc.documentElement.getAttribute("Cur") ||
       "EUR",
   };
@@ -227,10 +289,7 @@ function extractPositions(xmlDoc) {
       node.getAttribute("RNoPart") ||
       node.getAttribute("ID") ||
       "-";
-    const description =
-      deepText(node, ["Description", "OutlineText", "Text", "ShortText", "LongText"]) ||
-      collectTextSnippet(node, 220) ||
-      "-";
+    const description = extractDescriptionText(node) || collectTextSnippet(node, 220) || "-";
     const quantityRaw =
       deepText(node, ["Qty", "Quantity", "QTakeoff"]) ||
       node.getAttribute("Qty") ||
@@ -428,8 +487,12 @@ function deepText(parent, names) {
 function collectTextSnippet(node, maxLen) {
   const chunks = [];
   for (const child of Array.from(node.getElementsByTagName("*")).slice(0, 25)) {
+    const tag = localName(child).toLowerCase();
+    if (["up", "it", "qty", "qtakeoff", "qu", "ep", "gp", "price", "total", "totalprice"].includes(tag)) {
+      continue;
+    }
     const text = (child.textContent || "").trim();
-    if (text) {
+    if (text && !looksLikeNumber(text)) {
       chunks.push(text);
     }
     if (chunks.join(" ").length > maxLen) {
@@ -437,6 +500,41 @@ function collectTextSnippet(node, maxLen) {
     }
   }
   return chunks.join(" ").slice(0, maxLen);
+}
+
+function extractDescriptionText(node) {
+  const descriptionNode = firstByLocalName(node, "Description");
+  const source = descriptionNode || node;
+  const preferredTags = [
+    "OutlineText",
+    "OutlTxt",
+    "TextOutlTxt",
+    "ShortText",
+    "LongText",
+    "Text",
+    "span",
+    "p",
+  ].map((n) => n.toLowerCase());
+
+  const chunks = [];
+  for (const child of Array.from(source.getElementsByTagName("*"))) {
+    if (!preferredTags.includes(localName(child).toLowerCase())) {
+      continue;
+    }
+    const text = (child.textContent || "").trim();
+    if (text && !looksLikeNumber(text)) {
+      chunks.push(text);
+    }
+  }
+  if (chunks.length) {
+    return chunks.join(" ").slice(0, 220);
+  }
+
+  const plain = (source.textContent || "").trim();
+  if (plain && !looksLikeNumber(plain)) {
+    return plain.slice(0, 220);
+  }
+  return "";
 }
 
 function localName(node) {
@@ -467,6 +565,16 @@ function toNumber(value) {
 
   const num = Number(raw);
   return Number.isFinite(num) ? num : 0;
+}
+
+function looksLikeNumber(value) {
+  const raw = String(value || "")
+    .trim()
+    .replace(/\s+/g, "");
+  if (!raw) {
+    return false;
+  }
+  return /^[-+]?\d{1,3}([.,]\d{3})*([.,]\d+)?$/.test(raw) || /^[-+]?\d+([.,]\d+)?$/.test(raw);
 }
 
 function formatNumber(value) {
