@@ -14,7 +14,10 @@
           Lokale Analyse und Export von .x84-Dateien (kein Upload, keine Speicherung)
         </p>
       </div>
-      <button id="themeToggle" class="secondary-btn" type="button">Dark Mode</button>
+      <div class="header-actions">
+        <button id="expertToggle" class="secondary-btn" type="button">Expertenmodus: Aus</button>
+        <button id="themeToggle" class="secondary-btn" type="button">Dark Mode</button>
+      </div>
     </header>
 
     <main class="layout">
@@ -47,6 +50,10 @@
         <div class="panel-header wrap">
           <h2>Positionen und Preise</h2>
           <div class="filters">
+            <div class="view-toggle" role="group" aria-label="Ansicht umschalten">
+              <button id="groupedViewBtn" class="secondary-btn" type="button">Gruppiert</button>
+              <button id="listViewBtn" class="secondary-btn" type="button">Liste</button>
+            </div>
             <input id="searchInput" type="search" placeholder="Suche (OZ / Beschreibung)" />
             <input id="ozMinInput" type="text" placeholder="OZ von (z. B. 01.002)" />
             <input id="ozMaxInput" type="text" placeholder="OZ bis" />
@@ -59,6 +66,7 @@
             <thead>
               <tr>
                 <th>#</th>
+                <th>Gruppe</th>
                 <th>OZ</th>
                 <th>Beschreibung</th>
                 <th>Menge</th>
@@ -72,7 +80,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section id="allFieldsPanel" class="panel hidden">
         <h2>Alle XML-Felder</h2>
         <div id="allFieldsMeta" class="table-meta">0 Felder</div>
         <div class="table-wrap">

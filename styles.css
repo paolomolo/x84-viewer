@@ -50,6 +50,13 @@ body {
   gap: 1rem;
 }
 
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 h1,
 h2 {
   margin: 0 0 0.35rem;
@@ -240,6 +247,28 @@ button:disabled {
   gap: 0.5rem;
 }
 
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.view-toggle button {
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.view-toggle button:last-child {
+  border-right: 0;
+}
+
+.view-toggle button.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
 .table-wrap {
   overflow-x: auto;
   margin-top: 0.5rem;
@@ -271,6 +300,32 @@ th {
 
 tbody tr:hover {
   background: var(--panel-alt);
+}
+
+tbody tr.group-row:hover {
+  background: transparent;
+}
+
+.group-row td {
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel-alt);
+}
+
+.group-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.group-toggle {
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
 }
 
 .empty-state {

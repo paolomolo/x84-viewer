@@ -6,6 +6,8 @@ const state = {
   positions: [],
   filteredPositions: [],
   allFields: [],
+  viewMode: "grouped",
+  collapsedGroupIds: new Set(),
 };
 
 const el = {
@@ -27,14 +29,54 @@ const el = {
   ozMinInput: document.getElementById("ozMinInput"),
   ozMaxInput: document.getElementById("ozMaxInput"),
   resetFiltersBtn: document.getElementById("resetFiltersBtn"),
+  groupedViewBtn: document.getElementById("groupedViewBtn"),
+  listViewBtn: document.getElementById("listViewBtn"),
+  allFieldsPanel: document.getElementById("allFieldsPanel"),
+  expertToggle: document.getElementById("expertToggle"),
   themeToggle: document.getElementById("themeToggle"),
 };
 
 function init() {
   wireUpload();
   wireFilters();
+  wireViewMode();
+  wireExpertMode();
   wireTheme();
   wireExport();
+}
+
+function wireViewMode() {
+  const saved = localStorage.getItem("gaeb-view-mode");
+  setViewMode(saved === "list" ? "list" : "grouped");
+
+  el.groupedViewBtn.addEventListener("click", () => setViewMode("grouped"));
+  el.listViewBtn.addEventListener("click", () => setViewMode("list"));
+}
+
+function setViewMode(mode) {
+  state.viewMode = mode === "list" ? "list" : "grouped";
+  el.groupedViewBtn.classList.toggle("active", state.viewMode === "grouped");
+  el.listViewBtn.classList.toggle("active", state.viewMode === "list");
+  localStorage.setItem("gaeb-view-mode", state.viewMode);
+  if (state.positions.length) {
+    applyFiltersAndRender();
+  }
+}
+
+function wireExpertMode() {
+  const saved = localStorage.getItem("gaeb-expert-mode");
+  setExpertMode(saved === "1");
+
+  el.expertToggle.addEventListener("click", () => {
+    const enabled = el.allFieldsPanel.classList.contains("hidden");
+    setExpertMode(enabled);
+  });
+}
+
+function setExpertMode(enabled) {
+  el.allFieldsPanel.classList.toggle("hidden", !enabled);
+  el.expertToggle.textContent = enabled ? "Expertenmodus: An" : "Expertenmodus: Aus";
+  localStorage.setItem("gaeb-expert-mode", enabled ? "1" : "0");
 }
 
 function wireUpload() {
@@ -119,6 +161,7 @@ function wireExport() {
     }));
     const posRows = state.filteredPositions.map((p) => ({
       Nr: p.index,
+      Gruppe: p.groupDisplay || "-",
       OZ: p.oz,
       Beschreibung: p.description,
       Menge: p.quantity,
@@ -128,6 +171,8 @@ function wireExport() {
       Waehrung: p.currency,
       Bereich: p.scope,
     }));
+    const groupModel = buildGroupModel(state.filteredPositions);
+    const lvRows = buildLvStructureRows(groupModel);
     const allRows = state.allFields.map((entry) => ({
       Nr: entry.index,
       Pfad: entry.path,
@@ -138,16 +183,19 @@ function wireExport() {
     const projectSheet = XLSX.utils.json_to_sheet(projectRows);
     const bidSheet = XLSX.utils.json_to_sheet(bidRows);
     const positionsSheet = XLSX.utils.json_to_sheet(posRows);
+    const lvSheet = XLSX.utils.json_to_sheet(lvRows);
     const allFieldsSheet = XLSX.utils.json_to_sheet(allRows);
 
     styleKeyValueSheet(projectSheet, projectRows);
     styleKeyValueSheet(bidSheet, bidRows);
     stylePositionsSheet(positionsSheet, posRows);
+    styleLvStructureSheet(lvSheet, lvRows);
     styleAllFieldsSheet(allFieldsSheet, allRows);
 
     XLSX.utils.book_append_sheet(wb, projectSheet, "Projekt");
     XLSX.utils.book_append_sheet(wb, bidSheet, "Angebot");
     XLSX.utils.book_append_sheet(wb, positionsSheet, "Positionen");
+    XLSX.utils.book_append_sheet(wb, lvSheet, "LV-Struktur");
     XLSX.utils.book_append_sheet(wb, allFieldsSheet, "Alle XML-Felder");
 
     const fileName = `gaeb-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -165,7 +213,7 @@ function styleKeyValueSheet(sheet, rows) {
 }
 
 function stylePositionsSheet(sheet, rows) {
-  const headers = ["Nr", "OZ", "Beschreibung", "Menge", "Einheit", "EP", "GP", "Waehrung", "Bereich"];
+  const headers = ["Nr", "Gruppe", "OZ", "Beschreibung", "Menge", "Einheit", "EP", "GP", "Waehrung", "Bereich"];
   const colWidths = headers.map((header) => {
     const maxLen = Math.max(
       header.length,
@@ -174,10 +222,28 @@ function stylePositionsSheet(sheet, rows) {
     if (header === "Beschreibung") {
       return { wch: clampColWidth(maxLen + 2, 36, 90) };
     }
+    if (header === "Gruppe") {
+      return { wch: clampColWidth(maxLen + 2, 16, 42) };
+    }
     if (header === "OZ") {
       return { wch: clampColWidth(maxLen + 2, 10, 24) };
     }
     return { wch: clampColWidth(maxLen + 2, 10, 18) };
+  });
+  sheet["!cols"] = colWidths;
+}
+
+function styleLvStructureSheet(sheet, rows) {
+  const headers = ["Typ", "Ebene", "Gruppe", "OZ", "Beschreibung", "Menge", "Einheit", "EP", "GP", "Waehrung"];
+  const colWidths = headers.map((header) => {
+    const maxLen = Math.max(header.length, ...rows.map((row) => String(row[header] ?? "").length));
+    if (header === "Gruppe" || header === "Beschreibung") {
+      return { wch: clampColWidth(maxLen + 2, 24, 90) };
+    }
+    if (header === "OZ") {
+      return { wch: clampColWidth(maxLen + 2, 10, 24) };
+    }
+    return { wch: clampColWidth(maxLen + 2, 8, 16) };
   });
   sheet["!cols"] = colWidths;
 }
@@ -366,6 +432,7 @@ function extractPositions(xmlDoc) {
     const quantity = toNumber(quantityRaw);
     const unitPrice = toNumber(unitPriceRaw);
     const totalPrice = toNumber(totalPriceRaw) || quantity * unitPrice || 0;
+    const groupChain = extractGroupChain(node, oz);
 
     return {
       index: idx + 1,
@@ -377,6 +444,8 @@ function extractPositions(xmlDoc) {
       totalPrice,
       currency: currency.trim(),
       scope: inferScope(oz),
+      groupChain,
+      groupDisplay: groupChain.length ? groupChain[groupChain.length - 1].code : "-",
     };
   });
 
@@ -391,6 +460,8 @@ function applyFiltersAndRender() {
   state.filteredPositions = state.positions.filter((p) => {
     const matchSearch =
       !search ||
+      (p.groupDisplay || "").toLowerCase().includes(search) ||
+      p.groupChain.some((g) => g.label.toLowerCase().includes(search)) ||
       p.oz.toLowerCase().includes(search) ||
       p.description.toLowerCase().includes(search);
     const pOz = normalizeOz(p.oz);
@@ -407,31 +478,106 @@ function renderPositionsTable(rows, totalCount) {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.className = "empty-state";
     td.textContent = totalCount
       ? "Keine Positionen fuer aktuelle Filter gefunden."
       : "Keine Positionen gefunden.";
     tr.appendChild(td);
     el.tableBody.appendChild(tr);
+  } else if (state.viewMode === "list") {
+    renderListRows(rows);
   } else {
-    for (const row of rows) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(String(row.index))}</td>
-        <td>${escapeHtml(row.oz)}</td>
-        <td>${escapeHtml(row.description)}</td>
-        <td>${formatNumber(row.quantity)}</td>
-        <td>${escapeHtml(row.unit)}</td>
-        <td>${formatCurrency(row.unitPrice, row.currency)}</td>
-        <td>${formatCurrency(row.totalPrice, row.currency)}</td>
-      `;
-      el.tableBody.appendChild(tr);
-    }
+    renderGroupedRows(rows);
   }
 
   const shown = rows.length;
-  el.tableMeta.textContent = `${shown} von ${totalCount} Positionen sichtbar`;
+  const groupModel = buildGroupModel(rows);
+  el.tableMeta.textContent = `${shown} von ${totalCount} Positionen sichtbar · ${groupModel.roots.length} Hauptgruppen`;
+}
+
+function renderListRows(rows) {
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(String(row.index))}</td>
+      <td>${escapeHtml(row.groupDisplay || "-")}</td>
+      <td>${escapeHtml(row.oz)}</td>
+      <td>${escapeHtml(row.description)}</td>
+      <td>${formatNumber(row.quantity)}</td>
+      <td>${escapeHtml(row.unit)}</td>
+      <td>${formatCurrency(row.unitPrice, row.currency)}</td>
+      <td>${formatCurrency(row.totalPrice, row.currency)}</td>
+    `;
+    el.tableBody.appendChild(tr);
+  }
+}
+
+function renderGroupedRows(rows) {
+  const model = buildGroupModel(rows);
+
+  for (const rootKey of model.roots) {
+    renderGroupNode(model, rootKey);
+  }
+}
+
+function renderGroupNode(model, groupKey) {
+  const group = model.groups.get(groupKey);
+  if (!group) {
+    return;
+  }
+  const isCollapsed = state.collapsedGroupIds.has(group.key);
+
+  const tr = document.createElement("tr");
+  tr.className = "group-row";
+  tr.innerHTML = `
+    <td></td>
+    <td class="group-cell" style="padding-left:${Math.max(0, group.level - 1) * 14 + 8}px">
+      <button class="group-toggle" type="button" data-group-key="${escapeHtml(group.key)}">${isCollapsed ? "▸" : "▾"}</button>
+      <span>${escapeHtml(group.label)}</span>
+    </td>
+    <td colspan="4"></td>
+    <td></td>
+    <td>${formatCurrency(group.totalPrice, group.currency)}</td>
+  `;
+  const toggle = tr.querySelector(".group-toggle");
+  toggle?.addEventListener("click", () => {
+    if (state.collapsedGroupIds.has(group.key)) {
+      state.collapsedGroupIds.delete(group.key);
+    } else {
+      state.collapsedGroupIds.add(group.key);
+    }
+    renderGroupedRowsFromState();
+  });
+  el.tableBody.appendChild(tr);
+
+  if (isCollapsed) {
+    return;
+  }
+
+  for (const childKey of group.children) {
+    renderGroupNode(model, childKey);
+  }
+
+  for (const position of group.positions) {
+    const rowTr = document.createElement("tr");
+    rowTr.innerHTML = `
+      <td>${escapeHtml(String(position.index))}</td>
+      <td style="padding-left:${Math.max(0, group.level) * 14 + 8}px">${escapeHtml(position.groupDisplay || "-")}</td>
+      <td>${escapeHtml(position.oz)}</td>
+      <td>${escapeHtml(position.description)}</td>
+      <td>${formatNumber(position.quantity)}</td>
+      <td>${escapeHtml(position.unit)}</td>
+      <td>${formatCurrency(position.unitPrice, position.currency)}</td>
+      <td>${formatCurrency(position.totalPrice, position.currency)}</td>
+    `;
+    el.tableBody.appendChild(rowTr);
+  }
+}
+
+function renderGroupedRowsFromState() {
+  el.tableBody.innerHTML = "";
+  renderGroupedRows(state.filteredPositions);
 }
 
 function renderBidInfo(data, emptyText) {
@@ -708,6 +854,187 @@ function extractAllFields(xmlDoc) {
   }
 
   walk(root, `/${localName(root)}`);
+  return rows;
+}
+
+function extractGroupChain(node, oz) {
+  const groupNames = ["boqctgy", "ctgy", "category", "group", "section", "chapter"];
+  const chain = [];
+  let current = node?.parentElement || null;
+  while (current) {
+    const name = localName(current).toLowerCase();
+    if (groupNames.includes(name)) {
+      chain.push(current);
+    }
+    current = current.parentElement;
+  }
+  chain.reverse();
+
+  const normalizedChain = chain.map((groupNode, idx) => {
+    const rawCode =
+      (groupNode.getAttribute("RNoPart") || "").trim() ||
+      (groupNode.getAttribute("NoPart") || "").trim() ||
+      (groupNode.getAttribute("ID") || "").trim();
+    if (!rawCode) {
+      return null;
+    }
+    const codeSegment = normalizeGroupCodeSegment(rawCode);
+    const parentCode = idx > 0 ? chain[idx - 1].__groupCode || "" : "";
+    const code = parentCode ? `${parentCode}${codeSegment}.` : `${codeSegment}.`;
+    groupNode.__groupCode = code;
+    const title = extractGroupTitle(groupNode);
+    const idPart = (groupNode.getAttribute("ID") || "").trim() || codeSegment;
+    const key = idx > 0 ? `${chain[idx - 1].__groupKey}/${idPart}` : idPart;
+    groupNode.__groupKey = key;
+    return {
+      key,
+      code,
+      title,
+      label: title ? `${code} ${title}` : code,
+      level: idx + 1,
+    };
+  }).filter(Boolean);
+
+  if (normalizedChain.length) {
+    return normalizedChain;
+  }
+  return [];
+}
+
+function normalizeGroupCodeSegment(value) {
+  const digits = String(value || "").replace(/[^\d]/g, "");
+  if (!digits) {
+    return "00";
+  }
+  if (digits.length === 1) {
+    return `0${digits}`;
+  }
+  return digits;
+}
+
+function extractGroupTitle(groupNode) {
+  const directChildren = Array.from(groupNode.children || []);
+  const preferred = ["Name", "Title", "LblTx", "LblTxt", "LblBoQCtgy", "ShortText"];
+  for (const tag of preferred) {
+    const direct = directChildren.find((child) => localName(child).toLowerCase() === tag.toLowerCase());
+    if (direct) {
+      const text = (direct.textContent || "").trim().replace(/\s+/g, " ");
+      if (text && !looksLikeNumber(text)) {
+        return text;
+      }
+    }
+  }
+  return "";
+}
+
+function buildGroupModel(rows) {
+  const groups = new Map();
+  const roots = [];
+
+  const ensureGroup = (group, parentKey) => {
+    if (!groups.has(group.key)) {
+      groups.set(group.key, {
+        key: group.key,
+        label: group.label,
+        code: group.code,
+        title: group.title,
+        level: group.level,
+        parentKey,
+        children: [],
+        positions: [],
+        totalPrice: 0,
+        currency: "EUR",
+      });
+      if (!parentKey) {
+        roots.push(group.key);
+      } else {
+        const parent = groups.get(parentKey);
+        if (parent && !parent.children.includes(group.key)) {
+          parent.children.push(group.key);
+        }
+      }
+    }
+    return groups.get(group.key);
+  };
+
+  for (const row of rows) {
+    const chain = row.groupChain?.length ? row.groupChain : [];
+    let parentKey = null;
+    for (const group of chain) {
+      ensureGroup(group, parentKey);
+      parentKey = group.key;
+    }
+    if (!parentKey) {
+      parentKey = "ungrouped";
+      ensureGroup({ key: "ungrouped", label: "-", code: "-", title: "", level: 1 }, null);
+    }
+    const leafGroup = groups.get(parentKey);
+    leafGroup.positions.push(row);
+    leafGroup.totalPrice += row.totalPrice || 0;
+    leafGroup.currency = row.currency || "EUR";
+  }
+
+  const aggregate = (key) => {
+    const group = groups.get(key);
+    if (!group) {
+      return 0;
+    }
+    let total = group.totalPrice;
+    for (const childKey of group.children) {
+      total += aggregate(childKey);
+    }
+    group.totalPrice = total;
+    return total;
+  };
+
+  for (const rootKey of roots) {
+    aggregate(rootKey);
+  }
+
+  return { groups, roots };
+}
+
+function buildLvStructureRows(groupModel) {
+  const rows = [];
+  const walk = (key) => {
+    const group = groupModel.groups.get(key);
+    if (!group) {
+      return;
+    }
+    rows.push({
+      Typ: "Gruppe",
+      Ebene: group.level,
+      Gruppe: group.label,
+      OZ: "",
+      Beschreibung: group.title || "-",
+      Menge: "",
+      Einheit: "",
+      EP: "",
+      GP: group.totalPrice,
+      Waehrung: group.currency || "EUR",
+    });
+    for (const childKey of group.children) {
+      walk(childKey);
+    }
+    for (const position of group.positions) {
+      rows.push({
+        Typ: "Position",
+        Ebene: group.level + 1,
+        Gruppe: group.label,
+        OZ: position.oz,
+        Beschreibung: position.description,
+        Menge: position.quantity,
+        Einheit: position.unit,
+        EP: position.unitPrice,
+        GP: position.totalPrice,
+        Waehrung: position.currency,
+      });
+    }
+  };
+
+  for (const rootKey of groupModel.roots) {
+    walk(rootKey);
+  }
   return rows;
 }
 
